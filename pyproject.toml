@@ -17,3 +17,7 @@ dev = ["pytest>=8.0,<9", "httpx>=0.27,<1"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["."]
+
+[tool.setuptools.packages.find]
+include = ["tridifleet*"]
+exclude = ["web*", "tests*", "scripts*"]
