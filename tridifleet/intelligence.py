@@ -1,0 +1,233 @@
+from __future__ import annotations
+
+import hashlib
+import math
+import threading
+import uuid
+from dataclasses import dataclass
+
+import numpy as np
+
+from .bandit import HierarchicalThompsonBandit
+from .context import context_keys
+from .models import Ad, ContextEvent, Decision, Feedback
+from .reward import evidence_weight, retention_reward
+
+
+def _signed_hash(text: str, buckets: int) -> tuple[int, float]:
+    digest = hashlib.blake2b(text.encode("utf-8"), digest_size=8).digest()
+    value = int.from_bytes(digest, "big")
+    return value % buckets, 1.0 if (value >> 8) & 1 else -1.0
+
+
+class FeatureEncoder:
+    """Fixed-size feature hashing for arbitrary creative tags + real-valued context."""
+
+    dim = 128
+    tag_start = 20
+    tag_buckets = 28
+    interaction_start = 48
+    interaction_buckets = 80
+
+    def encode(self, ad: Ad, ctx: ContextEvent) -> np.ndarray:
+        x = np.zeros(self.dim, dtype=np.float64)
+        hour = ctx.timestamp.hour + ctx.timestamp.minute / 60.0
+        phase = 2.0 * math.pi * hour / 24.0
+        dow_phase = 2.0 * math.pi * ctx.timestamp.weekday() / 7.0
+
+        x[0] = 1.0
+        x[1] = ((ctx.female_share if ctx.female_share is not None else 0.5) - 0.5) * 2.0
+        x[2] = ((ctx.mean_age if ctx.mean_age is not None else 38.0) - 38.0) / 28.0
+        x[3] = min(2.0, (ctx.age_std if ctx.age_std is not None else 15.0) / 15.0)
+        x[4] = min(2.0, math.log1p(ctx.flow_per_minute) / 3.0)
+        x[5] = min(2.0, math.log1p(ctx.crowd_density) / 2.0)
+        x[6] = math.sin(phase)
+        x[7] = math.cos(phase)
+        x[8] = math.sin(dow_phase)
+        x[9] = math.cos(dow_phase)
+        x[10] = math.tanh((ctx.x_km or 0.0) / 5.0)
+        x[11] = math.tanh((ctx.y_km or 0.0) / 5.0)
+        x[12] = min(2.0, math.log1p(ctx.reach_window) / 3.0)
+        x[13] = (
+            ctx.impressions_window / ctx.reach_window if ctx.reach_window > 0 else 0.0
+        )
+        x[14] = min(2.0, ad.duration_seconds / 15.0)
+        x[15] = min(2.0, math.log1p(ad.daily_budget) / 6.0)
+
+        tags = set(t.strip().lower() for t in ad.tags if t.strip())
+        if ad.category:
+            tags.add(f"category:{ad.category.strip().lower()}")
+
+        female = x[1]
+        age = x[2]
+        time_sin = x[6]
+        flow = x[4]
+
+        for tag in tags:
+            bucket, sign = _signed_hash(f"tag:{tag}", self.tag_buckets)
+            x[self.tag_start + bucket] += sign
+
+            for suffix, value in (
+                ("gender", female),
+                ("age", age),
+                ("time", time_sin),
+                ("flow", flow),
+            ):
+                ib, isign = _signed_hash(
+                    f"interaction:{tag}:{suffix}", self.interaction_buckets
+                )
+                x[self.interaction_start + ib] += isign * value
+
+        norm = np.linalg.norm(x)
+        if norm > 6.0:
+            x *= 6.0 / norm
+        return x
+
+
+@dataclass
+class DiagonalBayesianRegressor:
+    """Online Bayesian linear approximation with diagonal covariance.
+
+    The model is intentionally cheap enough for many local decisions while
+    retaining uncertainty for Thompson sampling.
+    """
+
+    dim: int
+    prior_variance: float = 0.20
+    observation_variance: float = 0.035
+
+    def __post_init__(self):
+        self.mean = np.zeros(self.dim, dtype=np.float64)
+        self.mean[0] = 0.35
+        self.var = np.full(self.dim, self.prior_variance, dtype=np.float64)
+        self.var[0] = 0.08
+
+    def sample(self, rng: np.random.Generator) -> np.ndarray:
+        return rng.normal(self.mean, np.sqrt(np.maximum(self.var, 1e-8)))
+
+    def predict_mean(self, x: np.ndarray) -> float:
+        return float(np.clip(np.dot(self.mean, x), 0.0, 1.0))
+
+    def update(self, x: np.ndarray, y: float, weight: float) -> None:
+        if weight <= 0:
+            return
+        effective_noise = self.observation_variance / max(0.25, weight)
+        pred = float(np.dot(self.mean, x))
+        denom = effective_noise + float(np.dot(self.var, x * x))
+        if denom <= 1e-12:
+            return
+        gain = (self.var * x) / denom
+        error = float(y - pred)
+        self.mean += gain * error
+        self.var = np.maximum(1e-6, self.var * (1.0 - gain * x))
+
+
+class HybridRetentionIntelligence:
+    """Shared contextual Bayesian model + per-creative hierarchical Thompson residual.
+
+    The shared model generalizes through context and creative tags. The
+    hierarchical Beta component captures creative-specific evidence and preserves
+    strong cold-start exploration.
+    """
+
+    policy_name = "hybrid_contextual_thompson_v2"
+
+    def __init__(self, store, seed: int | None = None):
+        self.store = store
+        self.encoder = FeatureEncoder()
+        self.shared = DiagonalBayesianRegressor(self.encoder.dim)
+        self.rng = np.random.default_rng(seed)
+        self.residual = HierarchicalThompsonBandit(store, seed=seed)
+        self._decision_features: dict[str, tuple[np.ndarray, str, list[str]]] = {}
+        self._lock = threading.RLock()
+        self.total_updates = 0
+        self.total_reward = 0.0
+
+    def choose(self, totem_id: str, candidates: list[Ad] | None = None) -> Decision:
+        ctx = self.store.get_context(totem_id)
+        if ctx is None:
+            raise KeyError(f"no context registered for totem {totem_id}")
+
+        ads = candidates if candidates is not None else self.store.active_ads()
+        ads = [ad for ad in ads if ad.active]
+        if not ads:
+            raise RuntimeError("no active ads")
+
+        keys = context_keys(ctx)
+        theta = self.shared.sample(self.rng)
+        scored: list[tuple[float, float, float, Ad, np.ndarray]] = []
+
+        for ad in ads:
+            features = self.encoder.encode(ad, ctx)
+            model_sample = float(np.clip(np.dot(theta, features), 0.0, 1.0))
+            residual_sample = self.residual.sample_ad(ad.ad_id, keys)
+
+            # Early in the system, tag/context generalization matters more. The
+            # creative-specific posterior grows in influence as it collects data.
+            ad_n = self.store.posterior(ad.ad_id, "global").observations
+            residual_weight = min(0.45, 0.18 + ad_n / (ad_n + 80.0) * 0.27)
+            score = (1.0 - residual_weight) * model_sample + residual_weight * residual_sample
+            scored.append((score, model_sample, residual_sample, ad, features))
+
+        score, model_score, residual_score, winner, features = max(
+            scored, key=lambda row: row[0]
+        )
+
+        decision = Decision(
+            decision_id=str(uuid.uuid4()),
+            ad_id=winner.ad_id,
+            totem_id=totem_id,
+            sampled_score=float(score),
+            context_keys=keys,
+            policy=self.policy_name,
+            model_score=float(model_score),
+            residual_score=float(residual_score),
+        )
+        self.store.put_decision(decision)
+        with self._lock:
+            self._decision_features[decision.decision_id] = (
+                features.copy(),
+                winner.ad_id,
+                list(keys),
+            )
+        return decision
+
+    def apply_feedback(self, feedback: Feedback) -> dict[str, float | str]:
+        decision = self.store.get_decision(feedback.decision_id)
+        if decision is None:
+            raise KeyError("unknown decision_id")
+
+        reward = retention_reward(feedback)
+        weight = evidence_weight(feedback)
+
+        if weight > 0:
+            self.store.update(decision.ad_id, decision.context_keys, reward, weight)
+
+            with self._lock:
+                cached = self._decision_features.pop(feedback.decision_id, None)
+            if cached is not None:
+                features, _, _ = cached
+                self.shared.update(features, reward, weight)
+            self.total_updates += 1
+            self.total_reward += reward
+
+        return {
+            "decision_id": decision.decision_id,
+            "ad_id": decision.ad_id,
+            "reward": reward,
+            "evidence_weight": weight,
+            "policy": self.policy_name,
+        }
+
+    def mean_prediction(self, ad: Ad, ctx: ContextEvent) -> float:
+        return self.shared.predict_mean(self.encoder.encode(ad, ctx))
+
+    def diagnostics(self) -> dict[str, float | int | str]:
+        return {
+            "policy": self.policy_name,
+            "updates": self.total_updates,
+            "mean_observed_reward": (
+                self.total_reward / self.total_updates if self.total_updates else 0.0
+            ),
+            "mean_parameter_uncertainty": float(np.mean(self.shared.var)),
+        }

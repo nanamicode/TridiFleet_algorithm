@@ -10,22 +10,16 @@ from .store import MemoryStore
 
 
 class HierarchicalThompsonBandit:
-    """Contextual Thompson Sampling with hierarchical shrinkage/backoff.
-
-    Sparse contexts start close to global behavior. As evidence accumulates,
-    specific contexts automatically receive more influence.
-    """
+    """Contextual Thompson Sampling with hierarchical shrinkage/backoff."""
 
     def __init__(self, store: MemoryStore, seed: int | None = None):
         self.store = store
         self.rng = np.random.default_rng(seed)
 
-    def _sample_ad(self, ad_id: str, keys: list[str]) -> float:
+    def sample_ad(self, ad_id: str, keys: list[str]) -> float:
         blended = 0.0
         residual = 1.0
 
-        # Specific contexts get first chance to explain the event.
-        # "global" is excluded here and used exactly once as the backstop below.
         specific_keys = [key for key in keys if key != "global"]
         for key in reversed(specific_keys):
             p = self.store.posterior(ad_id, key)
@@ -40,11 +34,14 @@ class HierarchicalThompsonBandit:
             if residual <= 1e-9:
                 break
 
-        # Global posterior/prior is the safe backstop for unseen combinations.
         gp = self.store.posterior(ad_id, "global")
         global_sample = float(self.rng.beta(gp.alpha, gp.beta))
         blended += residual * global_sample
         return blended
+
+    def _sample_ad(self, ad_id: str, keys: list[str]) -> float:
+        # Compatibility alias for tests/older callers.
+        return self.sample_ad(ad_id, keys)
 
     def choose(self, totem_id: str) -> Decision:
         event = self.store.get_context(totem_id)
@@ -56,7 +53,7 @@ class HierarchicalThompsonBandit:
             raise RuntimeError("no active ads")
 
         keys = context_keys(event)
-        scores = [(self._sample_ad(ad.ad_id, keys), ad) for ad in ads]
+        scores = [(self.sample_ad(ad.ad_id, keys), ad) for ad in ads]
         score, winner = max(scores, key=lambda pair: pair[0])
 
         decision = Decision(
@@ -65,6 +62,8 @@ class HierarchicalThompsonBandit:
             totem_id=totem_id,
             sampled_score=score,
             context_keys=keys,
+            policy="hierarchical_thompson",
+            residual_score=score,
         )
         self.store.put_decision(decision)
         return decision

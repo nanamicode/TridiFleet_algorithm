@@ -10,6 +10,9 @@ class Ad(BaseModel):
     duration_seconds: float = Field(gt=0)
     active: bool = True
     category: str | None = None
+    tags: list[str] = Field(default_factory=list)
+    daily_budget: float = Field(default=250.0, gt=0)
+    cost_per_play: float = Field(default=0.06, gt=0)
 
 
 class ContextEvent(BaseModel):
@@ -17,10 +20,15 @@ class ContextEvent(BaseModel):
     timestamp: datetime
     location_id: str | None = None
     region: str | None = None
+    x_km: float | None = None
+    y_km: float | None = None
     reach_window: int = Field(default=0, ge=0)
     impressions_window: int = Field(default=0, ge=0)
     female_share: float | None = Field(default=None, ge=0, le=1)
     mean_age: float | None = Field(default=None, ge=0, le=120)
+    age_std: float | None = Field(default=None, ge=0, le=60)
+    flow_per_minute: float = Field(default=0.0, ge=0)
+    crowd_density: float = Field(default=0.0, ge=0)
 
 
 class DecisionRequest(BaseModel):
@@ -34,6 +42,9 @@ class Decision(BaseModel):
     totem_id: str
     sampled_score: float
     context_keys: list[str]
+    policy: str = "hybrid_contextual_thompson"
+    model_score: float | None = None
+    residual_score: float | None = None
 
 
 class Feedback(BaseModel):
@@ -42,6 +53,7 @@ class Feedback(BaseModel):
     impressions: int = Field(ge=0)
     avg_view_seconds: float = Field(ge=0)
     ad_duration_seconds: float = Field(gt=0)
+    completion_rate: float | None = Field(default=None, ge=0, le=1)
 
     @model_validator(mode="after")
     def impressions_cannot_exceed_reach(self):
