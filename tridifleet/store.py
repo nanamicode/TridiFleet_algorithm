@@ -22,7 +22,8 @@ class Posterior:
 
 
 class MemoryStore:
-    """Thread-safe MVP store. Replaceable by Redis without changing the bandit."""
+    """Thread-safe local store used for development and tests."""
+
     def __init__(self):
         self._lock = RLock()
         self.ads: dict[str, Ad] = {}
@@ -64,3 +65,10 @@ class MemoryStore:
     def get_decision(self, decision_id: str) -> Decision | None:
         with self._lock:
             return self.decisions.get(decision_id)
+
+    def list_posteriors(self, ad_id: str) -> list[tuple[str, Posterior]]:
+        with self._lock:
+            return sorted(
+                [(key, p) for (stored_ad_id, key), p in self.posteriors.items() if stored_ad_id == ad_id],
+                key=lambda pair: pair[0],
+            )
