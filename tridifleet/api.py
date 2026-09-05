@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 from fastapi import FastAPI, HTTPException
 
 from .bandit import HierarchicalThompsonBandit
@@ -7,7 +8,16 @@ from .models import Ad, ContextEvent, Decision, DecisionRequest, Feedback, Poste
 from .service import RetentionService
 from .store import MemoryStore
 
-store = MemoryStore()
+
+def build_store():
+    redis_url = os.getenv("REDIS_URL")
+    if redis_url:
+        from .redis_store import RedisStore
+        return RedisStore(redis_url)
+    return MemoryStore()
+
+
+store = build_store()
 bandit = HierarchicalThompsonBandit(store)
 service = RetentionService(store, bandit)
 
@@ -20,7 +30,11 @@ app = FastAPI(
 
 @app.get("/health")
 def health():
-    return {"status": "ok", "active_ads": len(store.active_ads())}
+    return {
+        "status": "ok",
+        "store": type(store).__name__,
+        "active_ads": len(store.active_ads()),
+    }
 
 
 @app.post("/api/v1/ads", response_model=Ad)
@@ -55,17 +69,14 @@ def feedback(payload: Feedback):
 
 @app.get("/api/v1/posteriors/{ad_id}", response_model=list[PosteriorView])
 def posteriors(ad_id: str):
-    result = []
-    for (stored_ad_id, key), p in store.posteriors.items():
-        if stored_ad_id == ad_id:
-            result.append(
-                PosteriorView(
-                    ad_id=ad_id,
-                    context_key=key,
-                    alpha=p.alpha,
-                    beta=p.beta,
-                    observations=p.observations,
-                    mean=p.mean,
-                )
-            )
-    return sorted(result, key=lambda x: x.context_key)
+    return [
+        PosteriorView(
+            ad_id=ad_id,
+            context_key=key,
+            alpha=p.alpha,
+            beta=p.beta,
+            observations=p.observations,
+            mean=p.mean,
+        )
+        for key, p in store.list_posteriors(ad_id)
+    ]
