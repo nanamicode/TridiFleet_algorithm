@@ -25,7 +25,9 @@ class HierarchicalThompsonBandit:
         residual = 1.0
 
         # Specific contexts get first chance to explain the event.
-        for key in reversed(keys):
+        # "global" is excluded here and used exactly once as the backstop below.
+        specific_keys = [key for key in keys if key != "global"]
+        for key in reversed(specific_keys):
             p = self.store.posterior(ad_id, key)
             n = p.observations
             confidence = n / (n + settings.shrinkage_k) if n > 0 else 0.0
@@ -38,7 +40,7 @@ class HierarchicalThompsonBandit:
             if residual <= 1e-9:
                 break
 
-        # Global prior/sample is the safe backstop for unseen combinations.
+        # Global posterior/prior is the safe backstop for unseen combinations.
         gp = self.store.posterior(ad_id, "global")
         global_sample = float(self.rng.beta(gp.alpha, gp.beta))
         blended += residual * global_sample
