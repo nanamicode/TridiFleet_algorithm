@@ -64,6 +64,13 @@ class SimulationEngine:
         self.recent_oracle = deque(maxlen=1200)
         self.metric_history: deque[MetricPoint] = deque(maxlen=360)
         self._last_metric_at = self.sim_time
+        # Each active slot accumulates unique pedestrians across the whole
+        # interval. This avoids counting only whoever happens to be present at
+        # the exact decision instant and prevents double-counting the same
+        # person on every physics tick.
+        self.exposure_seen: dict[str, dict[int, tuple[object, float]]] = {
+            t.totem_id: {} for t in self.city.totems
+        }
 
     def start_background(self) -> None:
         with self.lock:
@@ -153,12 +160,12 @@ class SimulationEngine:
             self.current_day = self.sim_time.date()
             self.spend_today.clear()
 
-    def _serve_totem(self, totem, spatial: SpatialIndex) -> None:
-        audience = spatial.query(
-            totem.x,
-            totem.y,
-            self.config.detection_radius_km,
-        )
+    def _serve_totem(self, totem, current_audience) -> None:
+        completed = list(self.exposure_seen.get(totem.totem_id, {}).values())
+        # The completed slot is the correct population for its delayed outcome.
+        # The next decision can use that rolling one-minute audience as context;
+        # if the lab has just started, fall back to the people present now.
+        audience = completed or current_audience
 
         previous_feedback = None
         if totem.current_ad_id and totem.current_decision_id:
@@ -218,6 +225,7 @@ class SimulationEngine:
             self.recent_oracle.append(max(expected))
 
         decision = self.intelligence.choose(totem.totem_id, candidates=candidates)
+        self.exposure_seen[totem.totem_id] = {}
         totem.current_ad_id = decision.ad_id
         totem.current_decision_id = decision.decision_id
         totem.last_decision_at = self.sim_time
@@ -236,13 +244,28 @@ class SimulationEngine:
             spatial = SpatialIndex(self.population.people)
 
             for totem in self.city.totems:
+                current_audience = spatial.query(
+                    totem.x,
+                    totem.y,
+                    self.config.detection_radius_km,
+                )
+
+                # Accumulate the minimum observed distance for every pedestrian
+                # exposed while the current creative is on screen.
+                if totem.current_ad_id:
+                    bucket = self.exposure_seen.setdefault(totem.totem_id, {})
+                    for person, distance in current_audience:
+                        prev = bucket.get(person.person_id)
+                        if prev is None or distance < prev[1]:
+                            bucket[person.person_id] = (person, distance)
+
                 due = (
                     totem.last_decision_at is None
                     or (self.sim_time - totem.last_decision_at).total_seconds()
                     >= self.config.decision_interval_sim_seconds
                 )
                 if due:
-                    self._serve_totem(totem, spatial)
+                    self._serve_totem(totem, current_audience)
 
             self._record_metric_if_due()
 
