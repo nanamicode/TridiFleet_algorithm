@@ -1,47 +1,87 @@
 # TridiFleet Algorithm
 
-Motor de inteligência de retenção para a rede de mídia física TridiFleet / TridiAudience.
+Motor de inteligência de retenção + laboratório de gêmeo digital para a rede TridiFleet / TridiAudience.
 
-O objetivo deste repositório é responder continuamente:
+A pergunta central é:
 
-> Qual anúncio deve tocar neste totem, neste momento, para maximizar a atenção visual esperada?
+> **Qual criativo deve tocar neste totem, neste momento, para maximizar a atenção visual esperada?**
 
-O backend recebe apenas telemetria já produzida pela visão computacional dos totens: alcance, impressões reais, distribuição demográfica, horário/local e tempo contínuo de visualização. O processamento de câmera/edge fica fora deste projeto.
+## Estado atual
 
-## MVP implementado
+O repositório já contém duas partes integradas:
 
-- FastAPI para ingestão, decisão e feedback;
-- Contextual Multi-Armed Bandit;
-- Thompson Sampling;
-- posterior Beta por anúncio/contexto;
-- contexto hierárquico com backoff para evitar fragmentação;
-- cold start automático para criativos novos;
-- recompensa combinando taxa de olhar + profundidade de retenção;
-- peso de evidência limitado por volume de alcance;
-- proteção contra falsos negativos quando reach=0;
-- armazenamento em memória para desenvolvimento;
-- Redis para execução real com múltiplos workers/restarts;
-- Docker + Docker Compose;
-- testes unitários;
-- simulador sintético de cidade.
+### 1. Inteligência real
 
-## Arquitetura
+O motor atual é um **Hybrid Contextual Thompson Sampling**:
 
-Veja docs/ARCHITECTURE.md.
+- Thompson Sampling hierárquico por criativo/contexto;
+- backoff global -> horário -> demografia -> região -> localização -> totem;
+- modelo Bayesiano compartilhado por features;
+- hashing de tags arbitrárias de criativo;
+- generalização para criativos novos;
+- incerteza explícita para exploração;
+- feedback online contínuo;
+- recompensa de retenção limitada a [0,1].
 
-A decisão atual é proposital: começar com um bandit Bayesiano barato e explicável e usar os dados gerados por ele para evoluir depois para modelos com embeddings / princípios de DLRM.
+O objetivo atual permanece retenção. Leilão, bidding e cobrança não fazem parte do aprendizado.
 
-## Rodar localmente
+### 2. Digital Twin Lab
 
-### Docker
+Uma cidade 2D procedural roda localmente com:
+
+- ruas arteriais, coletoras e locais;
+- zonas urbanas;
+- pessoas entrando, saindo e caminhando pelas ruas;
+- distribuição demográfica;
+- fluxo variável durante o dia;
+- dezenas ou centenas de totens;
+- exposição real por janelas;
+- gaze/impressões simulados;
+- tempo contínuo de visualização;
+- orçamento diário por criativo;
+- troca autônoma de criativos;
+- passagem de dias;
+- pausa e velocidades 0,25x / 0,5x / 1x;
+- painel web em tempo real;
+- inspeção individual de totens;
+- lista e criação de novos criativos;
+- gráficos de aprendizado.
+
+A simulação continua rodando no processo Python mesmo que a aba seja fechada.
+
+Documentação de integridade experimental: `docs/DIGITAL_TWIN.md`.
+
+Arquitetura do motor: `docs/ARCHITECTURE.md`.
+
+## Rodar
+
+### Docker — recomendado
 
 ~~~bash
 docker compose up --build
 ~~~
 
-API: http://localhost:8000
+Abra:
 
-Swagger: http://localhost:8000/docs
+~~~text
+http://localhost:8000
+~~~
+
+Login local padrão:
+
+~~~text
+usuário: admin
+senha: tridifleet-local
+~~~
+
+O Docker expõe a aplicação somente em `127.0.0.1` por padrão.
+
+Antes de expor a outra máquina, altere:
+
+~~~bash
+TRIDIFLEET_ADMIN_USER=...
+TRIDIFLEET_ADMIN_PASSWORD=...
+~~~
 
 ### Sem Docker
 
@@ -49,76 +89,63 @@ Swagger: http://localhost:8000/docs
 python -m venv .venv
 source .venv/bin/activate
 pip install -e ".[dev]"
-uvicorn main:app --reload
+uvicorn main:app
 ~~~
 
-Sem REDIS_URL, o servidor usa memória local. Com Redis:
+## Começando uma simulação
 
-~~~bash
-export REDIS_URL=redis://localhost:6379/0
-uvicorn main:app --host 0.0.0.0 --port 8000
+Depois do login:
+
+1. escolha a quantidade de totens;
+2. escolha o raio da cidade em km;
+3. escolha a seed;
+4. gere a cidade;
+5. a simulação e o aprendizado começam no servidor local.
+
+O mapa mostra as pessoas se movendo e os totens tomando decisões. Clique em qualquer totem para ver anúncio atual, alcance, impressões, retenção, demografia e reward.
+
+## Criativo novo
+
+Abra **Criativos** e cadastre algo como:
+
+~~~text
+ID: SOAP-001
+Nome: Sabonete Mercado Centro
+Categoria: higiene
+Tags: hygiene, supermarket, family, home
+Duração: 10
+Gasto diário: 400
 ~~~
 
-## Fluxo mínimo
+Ele entra imediatamente no conjunto de opções. Não existe uma regra manual dizendo onde mostrar esse anúncio: a incerteza Bayesiana e o aprendizado por tags/contexto determinam como ele será explorado.
 
-### 1. Cadastrar criativo
+## Integridade
 
-~~~bash
-curl -X POST http://localhost:8000/api/v1/ads \
-  -H "content-type: application/json" \
-  -d '{"ad_id":"bakery-01","name":"Pães da Padaria","duration_seconds":10,"category":"food"}'
+A IA não controla nem conhece a função que gera os resultados.
+
+~~~text
+mundo oculto
+    |
+    v
+sensor simulado
+    |
+    v
+telemetria agregada
+    |
+    v
+INTELIGÊNCIA
+    |
+    v
+escolha do criativo
+    |
+    v
+mundo oculto gera o resultado
+    |
+    v
+feedback atrasado
 ~~~
 
-### 2. Enviar contexto atual do totem
-
-~~~bash
-curl -X POST http://localhost:8000/api/v1/context \
-  -H "content-type: application/json" \
-  -d '{
-    "totem_id":"55",
-    "timestamp":"2026-09-05T17:00:00-03:00",
-    "location_id":"mall-north",
-    "region":"north",
-    "reach_window":42,
-    "impressions_window":12,
-    "female_share":0.65,
-    "mean_age":24
-  }'
-~~~
-
-### 3. Pedir próximo anúncio
-
-~~~bash
-curl -X POST http://localhost:8000/api/v1/decision \
-  -H "content-type: application/json" \
-  -d '{"totem_id":"55"}'
-~~~
-
-Guarde o decision_id.
-
-### 4. Enviar feedback observado
-
-~~~bash
-curl -X POST http://localhost:8000/api/v1/feedback \
-  -H "content-type: application/json" \
-  -d '{
-    "decision_id":"DECISION_ID",
-    "reach":20,
-    "impressions":9,
-    "avg_view_seconds":6.2,
-    "ad_duration_seconds":10
-  }'
-~~~
-
-A atualização afeta imediatamente as próximas decisões.
-
-## Simulação
-
-~~~bash
-python scripts/simulate_city.py
-~~~
-
-O ambiente sintético possui preferências diferentes por manhã/tarde/noite e serve para verificar se o bandit aprende a concentrar exibições nos criativos com melhor recompensa contextual.
+O oracle e a baseline aleatória existem somente no avaliador do laboratório e não entram nas features da IA.
 
 ## Testes
 
@@ -126,14 +153,4 @@ O ambiente sintético possui preferências diferentes por manhã/tarde/noite e s
 pytest -q
 ~~~
 
-## Escopo atual
-
-Este é o motor de retenção. Ainda não entram:
-- leilão de mídia;
-- orçamento do anunciante;
-- pacing financeiro;
-- cobrança;
-- atribuição de venda;
-- bidding.
-
-Essas camadas devem ser construídas depois que o motor de atenção estiver validado em shadow mode e tráfego real.
+O GitHub Actions executa os testes automaticamente a cada push.
