@@ -33,3 +33,10 @@ input:focus{border-color:var(--purple)}.form-grid{display:grid;grid-template-col
 .chart-card{padding:14px;margin-top:12px}.chart-title{display:flex;justify-content:space-between;align-items:center;margin-bottom:10px}.chart-title span{font-size:10px;color:#777d8a}.chart-card canvas{width:100%;display:block}
 .integrity-box{margin-top:12px;padding:16px}.integrity-box p{color:#969ba7;line-height:1.5;font-size:12px}.integrity-box code{color:#c4b5fd}
 @media(max-width:950px){.workspace{grid-template-columns:1fr}.inspector{display:none}.hud{grid-template-columns:repeat(3,1fr)}.controls .ghost:first-child{display:none}.brand{min-width:auto}.brand span{display:none}}
+
+.trace-box{margin-top:20px;border-top:1px solid var(--line);padding-top:18px}
+.candidate-list{display:flex;flex-direction:column;gap:7px;margin-top:10px}
+.candidate{background:#171820;border:1px solid #292b35;border-radius:10px;padding:9px}
+.candidate.win{border-color:#6e55ad;background:#1b1725}
+.candidate-top{display:flex;justify-content:space-between;gap:10px;font-size:11px}
+.candidate small{display:block;color:#747a88;margin-top:5px;font-size:9px}

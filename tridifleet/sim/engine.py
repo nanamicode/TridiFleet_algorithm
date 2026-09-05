@@ -318,6 +318,7 @@ class SimulationEngine:
                 "mean_age": totem.mean_age,
                 "flow_per_minute": totem.flow_per_minute,
                 "plays": totem.plays,
+                "decision_trace": self.intelligence.trace(totem.current_decision_id),
             }
 
     def metrics(self) -> dict:

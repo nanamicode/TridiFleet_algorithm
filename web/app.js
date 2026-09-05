@@ -1,5 +1,5 @@
 const $ = (q)=>document.querySelector(q);
-const state = { map:null, snapshot:null, selected:null, socket:null, metrics:null };
+const state = { map:null, snapshot:null, prevSnapshot:null, snapshotAt:0, selected:null, socket:null, metrics:null };
 
 const api = async (url, options={}) => {
   const r = await fetch(url, {headers:{"content-type":"application/json",...(options.headers||{})},...options});
@@ -50,7 +50,12 @@ function connect(){
   if(state.socket) try{state.socket.close()}catch(_){}
   const proto=location.protocol==="https:"?"wss":"ws";
   state.socket=new WebSocket(proto+"://"+location.host+"/ws/lab");
-  state.socket.onmessage=e=>{state.snapshot=JSON.parse(e.data);updateUI();draw()};
+  state.socket.onmessage=e=>{
+    state.prevSnapshot=state.snapshot;
+    state.snapshot=JSON.parse(e.data);
+    state.snapshotAt=performance.now();
+    updateUI();
+  };
   state.socket.onclose=()=>setTimeout(()=>{if(!document.hidden)connect()},1200);
 }
 
@@ -129,8 +134,13 @@ function draw(){
     ctx.strokeStyle=r.kind==="arterial"?"#343844":r.kind==="collector"?"#242832":"#181b22";
     ctx.lineWidth=(r.kind==="arterial"?2.2:r.kind==="collector"?1.4:.8)*devicePixelRatio;ctx.stroke();
   }
+  const alpha=Math.min(1,Math.max(0,(performance.now()-state.snapshotAt)/500));
+  const previous=new Map((state.prevSnapshot?.people||[]).map(p=>[p.id,p]));
   for(const p of state.snapshot.people){
-    const [x,y]=project(p.x,p.y);ctx.beginPath();ctx.arc(x,y,1.25*devicePixelRatio,0,Math.PI*2);
+    const old=previous.get(p.id);
+    const px=old?old.x+(p.x-old.x)*alpha:p.x;
+    const py=old?old.y+(p.y-old.y)*alpha:p.y;
+    const [x,y]=project(px,py);ctx.beginPath();ctx.arc(x,y,1.25*devicePixelRatio,0,Math.PI*2);
     ctx.fillStyle=p.gender==="F"?"#d5c8f3":"#aab6cc";ctx.globalAlpha=.72;ctx.fill();
   }
   ctx.globalAlpha=1;
@@ -161,6 +171,10 @@ async function updateTotem(id){
       ["Idade média",t.mean_age.toFixed(1)],["Fluxo",t.flow_per_minute.toFixed(1)+"/min"],["Exibições",t.plays]
     ];
     $("#totemMetrics").innerHTML=rows.map(r=>'<div class="detail"><span>'+esc(r[0])+'</span><strong>'+esc(r[1])+'</strong></div>').join("");
+    const trace=t.decision_trace;
+    $("#decisionTrace").innerHTML=trace?.top_candidates?.map((c,i)=>
+      '<div class="candidate '+(i===0?'win':'')+'"><div class="candidate-top"><strong>'+esc(c.name)+'</strong><span>'+pct(c.score)+'</span></div><small>modelo '+pct(c.shared_model)+' · residual '+pct(c.creative_residual)+' · incerteza '+Number(c.uncertainty).toFixed(3)+' · n '+Number(c.global_observations).toFixed(0)+'</small></div>'
+    ).join("")||'<span class="muted">Aguardando primeira decisão.</span>';
   }catch(_){}
 }
 
@@ -187,3 +201,6 @@ function chart(el,data,series,minY,maxY){
   series.forEach(([key,color])=>{c.beginPath();data.forEach((p,i)=>{const x=i/(Math.max(1,data.length-1))*w,y=h-(Number(p[key])-lo)/span*h*.9-h*.05;(i?c.lineTo(x,y):c.moveTo(x,y))});c.strokeStyle=color;c.lineWidth=2*dpr;c.stroke()});
 }
 boot();
+
+function renderLoop(){draw();requestAnimationFrame(renderLoop)}
+requestAnimationFrame(renderLoop);

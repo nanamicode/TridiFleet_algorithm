@@ -48,9 +48,11 @@ class FeatureEncoder:
         x[10] = math.tanh((ctx.x_km or 0.0) / 5.0)
         x[11] = math.tanh((ctx.y_km or 0.0) / 5.0)
         x[12] = min(2.0, math.log1p(ctx.reach_window) / 3.0)
-        x[13] = (
-            ctx.impressions_window / ctx.reach_window if ctx.reach_window > 0 else 0.0
-        )
+        # Deliberately do NOT feed the previous ad's impression rate back into
+        # the next decision. It is policy-dependent and would create an
+        # endogenous self-reinforcing feature. Keep it in telemetry for audit,
+        # not as a decision input.
+        x[13] = 1.0 if ctx.female_share is not None and ctx.mean_age is not None else 0.0
         x[14] = min(2.0, ad.duration_seconds / 15.0)
         x[15] = min(2.0, math.log1p(ad.daily_budget) / 6.0)
 
@@ -139,6 +141,8 @@ class HybridRetentionIntelligence:
         self.rng = np.random.default_rng(seed)
         self.residual = HierarchicalThompsonBandit(store, seed=seed)
         self._decision_features: dict[str, tuple[np.ndarray, str, list[str]]] = {}
+        self._decision_traces: dict[str, dict] = {}
+        self._trace_order: list[str] = []
         self._lock = threading.RLock()
         self.total_updates = 0
         self.total_reward = 0.0
@@ -155,7 +159,7 @@ class HybridRetentionIntelligence:
 
         keys = context_keys(ctx)
         theta = self.shared.sample(self.rng)
-        scored: list[tuple[float, float, float, Ad, np.ndarray]] = []
+        scored: list[tuple[float, float, float, float, Ad, np.ndarray]] = []
 
         for ad in ads:
             features = self.encoder.encode(ad, ctx)
@@ -167,9 +171,12 @@ class HybridRetentionIntelligence:
             ad_n = self.store.posterior(ad.ad_id, "global").observations
             residual_weight = min(0.45, 0.18 + ad_n / (ad_n + 80.0) * 0.27)
             score = (1.0 - residual_weight) * model_sample + residual_weight * residual_sample
-            scored.append((score, model_sample, residual_sample, ad, features))
+            uncertainty = float(
+                np.sqrt(np.maximum(0.0, np.dot(self.shared.var, features * features)))
+            )
+            scored.append((score, model_sample, residual_sample, uncertainty, ad, features))
 
-        score, model_score, residual_score, winner, features = max(
+        score, model_score, residual_score, uncertainty, winner, features = max(
             scored, key=lambda row: row[0]
         )
 
@@ -190,6 +197,32 @@ class HybridRetentionIntelligence:
                 winner.ad_id,
                 list(keys),
             )
+            ranked = sorted(scored, key=lambda row: row[0], reverse=True)[:5]
+            self._decision_traces[decision.decision_id] = {
+                "decision_id": decision.decision_id,
+                "totem_id": totem_id,
+                "winner": winner.ad_id,
+                "policy": self.policy_name,
+                "context_keys": list(keys),
+                "top_candidates": [
+                    {
+                        "ad_id": row[4].ad_id,
+                        "name": row[4].name,
+                        "score": float(row[0]),
+                        "shared_model": float(row[1]),
+                        "creative_residual": float(row[2]),
+                        "uncertainty": float(row[3]),
+                        "global_observations": float(
+                            self.store.posterior(row[4].ad_id, "global").observations
+                        ),
+                    }
+                    for row in ranked
+                ],
+            }
+            self._trace_order.append(decision.decision_id)
+            if len(self._trace_order) > 2500:
+                old = self._trace_order.pop(0)
+                self._decision_traces.pop(old, None)
         return decision
 
     def apply_feedback(self, feedback: Feedback) -> dict[str, float | str]:
@@ -221,6 +254,13 @@ class HybridRetentionIntelligence:
 
     def mean_prediction(self, ad: Ad, ctx: ContextEvent) -> float:
         return self.shared.predict_mean(self.encoder.encode(ad, ctx))
+
+    def trace(self, decision_id: str | None) -> dict | None:
+        if not decision_id:
+            return None
+        with self._lock:
+            trace = self._decision_traces.get(decision_id)
+            return dict(trace) if trace else None
 
     def diagnostics(self) -> dict[str, float | int | str]:
         return {
