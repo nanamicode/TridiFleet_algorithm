@@ -1,0 +1,134 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>TridiFleet Intelligence Lab</title>
+  <link rel="stylesheet" href="/static/styles.css" />
+</head>
+<body>
+  <div id="loginScreen" class="overlay">
+    <form id="loginForm" class="modal login-card">
+      <div class="brand-mark">TF</div>
+      <h1>TridiFleet Lab</h1>
+      <p>Gêmeo digital local do motor de retenção.</p>
+      <label>Usuário<input id="username" autocomplete="username" value="admin" /></label>
+      <label>Senha<input id="password" type="password" autocomplete="current-password" /></label>
+      <button type="submit" class="primary">Entrar</button>
+      <div id="loginError" class="error"></div>
+    </form>
+  </div>
+
+  <div id="setupScreen" class="overlay hidden">
+    <form id="setupForm" class="modal setup-card">
+      <div class="eyebrow">Nova cidade simulada</div>
+      <h2>Configure o laboratório</h2>
+      <p>A cidade e a população serão geradas proceduralmente. A IA não terá acesso à física oculta da simulação.</p>
+      <div class="form-grid">
+        <label>Totens<input id="nTotems" type="number" min="1" max="500" value="60" /></label>
+        <label>Raio da cidade (km)<input id="radiusKm" type="number" min=".5" max="25" step=".5" value="4" /></label>
+        <label>Seed<input id="seed" type="number" min="0" value="42" /></label>
+      </div>
+      <button type="submit" class="primary">Gerar cidade e iniciar</button>
+    </form>
+  </div>
+
+  <main id="app" class="app hidden">
+    <header class="topbar">
+      <div class="brand">
+        <div class="brand-mark small">TF</div>
+        <div><strong>TridiFleet</strong><span>Intelligence Lab</span></div>
+      </div>
+      <div class="clock-wrap">
+        <span class="eyebrow">Tempo simulado</span>
+        <strong id="simClock">—</strong>
+      </div>
+      <div class="controls">
+        <button id="pauseBtn" class="ghost">Pausar</button>
+        <div class="segmented" id="speedControl">
+          <button data-speed=".25">0,25×</button>
+          <button data-speed=".5">0,5×</button>
+          <button data-speed="1" class="active">1×</button>
+        </div>
+        <button id="creativesBtn" class="ghost">Criativos</button>
+        <button id="metricsBtn" class="primary compact">Inteligência</button>
+      </div>
+    </header>
+
+    <section class="hud">
+      <div class="stat"><span>Pessoas ativas</span><strong id="peopleCount">0</strong></div>
+      <div class="stat"><span>Decisões</span><strong id="decisionCount">0</strong></div>
+      <div class="stat"><span>Retenção IA</span><strong id="aiReward">0%</strong></div>
+      <div class="stat"><span>Baseline aleatório</span><strong id="randomReward">0%</strong></div>
+      <div class="stat emphasis"><span>Uplift estimado</span><strong id="uplift">0%</strong></div>
+      <div class="stat"><span>Incerteza</span><strong id="uncertainty">—</strong></div>
+    </section>
+
+    <section class="workspace">
+      <div class="map-shell">
+        <canvas id="cityCanvas"></canvas>
+        <div class="map-legend">
+          <span><i class="dot person"></i>Pessoa</span>
+          <span><i class="dot totem"></i>Totem</span>
+          <span><i class="line arterial"></i>Arterial</span>
+        </div>
+        <div class="map-hint">Clique em um totem para inspecionar</div>
+      </div>
+
+      <aside id="totemPanel" class="inspector">
+        <div class="eyebrow">Totem selecionado</div>
+        <h2 id="totemTitle">Nenhum</h2>
+        <p id="totemSubtitle" class="muted">Selecione um ponto roxo no mapa.</p>
+        <div id="totemMetrics" class="detail-grid"></div>
+      </aside>
+    </section>
+  </main>
+
+  <aside id="creativesDrawer" class="drawer">
+    <div class="drawer-head">
+      <div><span class="eyebrow">Inventário</span><h2>Criativos</h2></div>
+      <button class="close" data-close="creativesDrawer">×</button>
+    </div>
+    <button id="newCreativeBtn" class="primary">+ Novo criativo</button>
+    <div id="creativeForm" class="new-creative hidden">
+      <div class="form-grid">
+        <label>ID<input id="adId" placeholder="AD-SABAO-01" /></label>
+        <label>Nome<input id="adName" placeholder="Sabonete Mercado Centro" /></label>
+        <label>Categoria<input id="adCategory" placeholder="higiene" /></label>
+        <label>Tags<input id="adTags" placeholder="hygiene, supermarket, family" /></label>
+        <label>Duração (s)<input id="adDuration" type="number" value="10" min="3" /></label>
+        <label>Gasto diário (R$)<input id="adBudget" type="number" value="250" min="1" step="10" /></label>
+      </div>
+      <button id="saveCreativeBtn" class="primary">Adicionar à rede</button>
+    </div>
+    <div id="creativeList" class="creative-list"></div>
+  </aside>
+
+  <aside id="metricsDrawer" class="drawer wide">
+    <div class="drawer-head">
+      <div><span class="eyebrow">Aprendizado online</span><h2>Como a IA está evoluindo</h2></div>
+      <button class="close" data-close="metricsDrawer">×</button>
+    </div>
+    <div class="metric-cards">
+      <div><span>IA</span><strong id="metricAi">—</strong></div>
+      <div><span>Random</span><strong id="metricRandom">—</strong></div>
+      <div><span>Oracle oculto</span><strong id="metricOracle">—</strong></div>
+      <div><span>Uplift</span><strong id="metricUplift">—</strong></div>
+    </div>
+    <div class="chart-card">
+      <div class="chart-title"><strong>Retenção ao longo do tempo</strong><span>IA vs baseline vs teto oculto</span></div>
+      <canvas id="rewardChart" height="260"></canvas>
+    </div>
+    <div class="chart-card">
+      <div class="chart-title"><strong>Incerteza do modelo</strong><span>Deve cair conforme os dados chegam</span></div>
+      <canvas id="uncertaintyChart" height="180"></canvas>
+    </div>
+    <div class="integrity-box">
+      <strong>Integridade experimental</strong>
+      <p>O modelo de resposta real fica isolado em <code>sim/ground_truth.py</code>. O motor de inteligência recebe somente contexto, decisão e feedback agregado. Baseline e oracle são calculados apenas pelo avaliador da simulação e nunca retornam como feature de treinamento.</p>
+    </div>
+  </aside>
+
+  <script src="/static/app.js"></script>
+</body>
+</html>
