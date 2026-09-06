@@ -7,6 +7,7 @@ from dataclasses import dataclass
 from datetime import datetime
 
 from ..models import Ad, Feedback
+from ..taxonomy import canonical_tag, canonical_tags
 from .domain import Person
 
 
@@ -70,12 +71,17 @@ class GroundTruthModel:
             return cached
 
         rng = self._rng_for_ad(ad)
-        tags = {t.lower().strip() for t in ad.tags}
+        tags = canonical_tags(ad.tags)
         if ad.category:
-            tags.add(ad.category.lower().strip())
+            tags.add(canonical_tag(ad.category))
 
-        interest_weights = {k: rng.uniform(-0.12, 0.18) for k in set(INTEREST_ALIASES.values())}
-        mapped = {INTEREST_ALIASES[t] for t in tags if t in INTEREST_ALIASES}
+        all_interests = {
+            "food", "coffee", "beauty", "health", "fitness", "pets", "family",
+            "fashion", "technology", "cars", "home", "education", "finance",
+            "travel", "entertainment", "services",
+        }
+        interest_weights = {k: rng.uniform(-0.12, 0.18) for k in all_interests}
+        mapped = {interest for tag in tags for interest in TAG_INTERESTS.get(tag, ())}
         for interest in mapped:
             interest_weights[interest] = rng.uniform(0.65, 1.20)
 

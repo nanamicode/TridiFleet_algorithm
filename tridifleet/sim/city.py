@@ -147,7 +147,13 @@ class CityMap:
         ]
         return CityMap(radius_km, roads, zones, intersections, totems)
 
-    def weighted_intersection(self, rng: random.Random, hour: float) -> tuple[float, float]:
+    def weighted_intersection(
+        self,
+        rng: random.Random,
+        hour: float,
+        interests: set[str] | None = None,
+        age: int | None = None,
+    ) -> tuple[float, float]:
         def zone_time_multiplier(kind: str) -> float:
             if kind == "office":
                 return 1.7 if 7 <= hour <= 10 or 16 <= hour <= 19 else 0.65
@@ -163,15 +169,44 @@ class CityMap:
                 return 1.8 if 6.5 <= hour <= 9.5 or 16 <= hour <= 20 else 0.8
             return 1.0
 
-        sample = rng.sample(self.intersections, k=min(48, len(self.intersections)))
+        interests = interests or set()
+
+        def profile_affinity(kind: str) -> float:
+            mapping = {
+                "downtown": {"services", "food", "finance", "coffee"},
+                "commercial": {"fashion", "food", "technology", "home", "beauty"},
+                "residential": {"home", "family", "pets"},
+                "office": {"finance", "services", "coffee", "technology"},
+                "leisure": {"entertainment", "food", "travel", "fitness"},
+                "transit": {"services", "coffee", "food"},
+                "school": {"education", "family"},
+                "health": {"health", "fitness"},
+            }
+            overlap = len(interests.intersection(mapping.get(kind, set())))
+            affinity = 1.0 + overlap * 0.48
+            if kind == "school" and age is not None and (age < 22 or 28 <= age <= 48):
+                affinity += 0.45
+            if kind == "office" and age is not None and 22 <= age <= 62:
+                affinity += 0.25
+            if kind == "health" and age is not None and age >= 50:
+                affinity += 0.30
+            return affinity
+
+        sample = rng.sample(self.intersections, k=min(56, len(self.intersections)))
         weights = []
         for x, y in sample:
             w = 0.2 + math.exp(-math.hypot(x, y) / max(0.4, self.radius_km * 0.6))
+            # Central arterials and their crossings carry more pedestrian flow.
+            if abs(x) < self.radius_km * 0.13:
+                w *= 1.35
+            if abs(y) < self.radius_km * 0.13:
+                w *= 1.35
             for z in self.zones:
                 d = math.hypot(x - z.x, y - z.y)
                 w += (
                     z.intensity
                     * zone_time_multiplier(z.kind)
+                    * profile_affinity(z.kind)
                     * math.exp(-d / max(0.12, z.radius_km))
                 )
             weights.append(w)

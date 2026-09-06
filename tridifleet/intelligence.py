@@ -12,6 +12,7 @@ from .bandit import HierarchicalThompsonBandit
 from .context import context_keys
 from .models import Ad, ContextEvent, Decision, Feedback
 from .reward import evidence_weight, retention_reward
+from .taxonomy import canonical_tag, canonical_tags
 
 
 def _signed_hash(text: str, buckets: int) -> tuple[int, float]:
@@ -53,12 +54,18 @@ class FeatureEncoder:
         # endogenous self-reinforcing feature. Keep it in telemetry for audit,
         # not as a decision input.
         x[13] = 1.0 if ctx.female_share is not None and ctx.mean_age is not None else 0.0
-        x[14] = min(2.0, ad.duration_seconds / 15.0)
-        x[15] = min(2.0, math.log1p(ad.daily_budget) / 6.0)
+        duration_norm = min(2.0, ad.duration_seconds / 15.0)
+        x[14] = duration_norm
+        # Daily budget is deliberately excluded from retention features. Money
+        # constrains eligibility/pacing; it must not teach the model that a
+        # higher budget makes humans like a creative more.
+        x[15] = duration_norm * duration_norm
 
-        tags = set(t.strip().lower() for t in ad.tags if t.strip())
+        tags = canonical_tags(ad.tags)
         if ad.category:
-            tags.add(f"category:{ad.category.strip().lower()}")
+            category = canonical_tag(ad.category)
+            tags.add(category)
+            tags.add(f"category:{category}")
 
         female = x[1]
         age = x[2]

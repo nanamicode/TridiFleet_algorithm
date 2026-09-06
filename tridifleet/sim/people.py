@@ -103,15 +103,16 @@ class PopulationEngine:
 
     def _spawn_person(self, timestamp: datetime) -> Person:
         hour = timestamp.hour + timestamp.minute / 60.0
-        start = self.city.weighted_intersection(self.rng, hour)
-        end = self.city.weighted_intersection(self.rng, hour)
-        tries = 0
-        while end == start and tries < 8:
-            end = self.city.weighted_intersection(self.rng, hour)
-            tries += 1
-
         age = self._sample_age()
         female = self.rng.random() < 0.505
+        interests = self._sample_interests(age, female)
+        start = self.city.weighted_intersection(self.rng, hour, interests, age)
+        end = self.city.weighted_intersection(self.rng, hour, interests, age)
+        tries = 0
+        while end == start and tries < 8:
+            end = self.city.weighted_intersection(self.rng, hour, interests, age)
+            tries += 1
+
         person = Person(
             person_id=self.next_id,
             x=start[0],
@@ -121,7 +122,7 @@ class PopulationEngine:
             age=age,
             female=female,
             speed_kmh=max(2.4, min(7.2, self.rng.gauss(4.8, 0.8))),
-            interests=self._sample_interests(age, female),
+            interests=interests,
             attention_propensity=max(-1.5, min(1.5, self.rng.gauss(0.0, 0.55))),
             route=self._route(start, end),
             ttl_seconds=self.rng.uniform(900, 4200),
@@ -132,7 +133,7 @@ class PopulationEngine:
     def _reroute(self, person: Person, timestamp: datetime) -> None:
         hour = timestamp.hour + timestamp.minute / 60.0
         start = (person.x, person.y)
-        end = self.city.weighted_intersection(self.rng, hour)
+        end = self.city.weighted_intersection(self.rng, hour, person.interests, person.age)
         person.route = self._route(start, end)
         person.route_index = 1
         person.ttl_seconds += self.rng.uniform(300, 1200)
