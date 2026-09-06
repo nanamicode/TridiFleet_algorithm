@@ -64,6 +64,7 @@ class SimulationEngine:
         self.total_decisions = 0
         self.total_feedback = 0
         self.total_events = 0
+        self.no_fill_slots = 0
         self.current_day = self.sim_time.date()
 
         self.recent_observed = deque(maxlen=1200)
@@ -150,12 +151,11 @@ class SimulationEngine:
 
     def _eligible_ads(self) -> list[Ad]:
         ads = self.store.active_ads()
-        eligible = [
+        return [
             ad
             for ad in ads
-            if self.spend_today.get(ad.ad_id, 0.0) < ad.daily_budget
+            if self.spend_today.get(ad.ad_id, 0.0) + 1e-9 < ad.daily_budget
         ]
-        return eligible or ads
 
     def _mean(self, values: deque[float]) -> float:
         return sum(values) / len(values) if values else 0.0
@@ -317,7 +317,11 @@ class SimulationEngine:
                 self.total_feedback += 1
 
                 cost = ad.cost_per_play + previous_feedback.impressions * 0.018
-                self.spend_today[ad.ad_id] = self.spend_today.get(ad.ad_id, 0.0) + cost
+                current_spend = self.spend_today.get(ad.ad_id, 0.0)
+                self.spend_today[ad.ad_id] = min(
+                    ad.daily_budget,
+                    current_spend + cost,
+                )
 
         ctx = self.sensor.context(
             totem=totem,
@@ -335,6 +339,20 @@ class SimulationEngine:
 
         candidates = self._eligible_ads()
         if not candidates:
+            self.pending_evaluation.pop(totem.totem_id, None)
+            self.exposure_seen[totem.totem_id] = {}
+            totem.current_ad_id = None
+            totem.current_decision_id = None
+            totem.last_decision_at = self.sim_time
+            self.no_fill_slots += 1
+            self.audit.append(
+                "no_fill",
+                self.sim_time.isoformat(),
+                {
+                    "totem_id": totem.totem_id,
+                    "reason": "all_daily_budgets_exhausted",
+                },
+            )
             return
 
         decision = self.intelligence.choose(totem.totem_id, candidates=candidates)
@@ -487,6 +505,7 @@ class SimulationEngine:
                 "people": len(self.population.people),
                 "decisions": self.total_decisions,
                 "feedback_events": self.total_feedback,
+                "no_fill_slots": self.no_fill_slots,
                 "simulation_time": self.sim_time.isoformat(),
                 "day": self.sim_time.date().isoformat(),
                 "speed": self.speed,
@@ -555,6 +574,7 @@ class SimulationEngine:
                     "creative_diversity": self._creative_diversity(),
                     "decisions": self.total_decisions,
                     "feedback_events": self.total_feedback,
+                    "no_fill_slots": self.no_fill_slots,
                     "uncertainty": self.intelligence.diagnostics()[
                         "mean_parameter_uncertainty"
                     ],
