@@ -41,6 +41,7 @@ class HiddenCreativeProfile:
     age_width: float
     female_bias: float
     peak_hour: float
+    drift_phase: float
     interest_weights: dict[str, float]
 
 
@@ -116,6 +117,7 @@ class GroundTruthModel:
             age_width=rng.uniform(12, 25),
             female_bias=female_bias,
             peak_hour=peak_hour,
+            drift_phase=rng.uniform(0.0, math.pi * 2.0),
             interest_weights=interest_weights,
         )
         self._profiles[ad.ad_id] = profile
@@ -134,8 +136,19 @@ class GroundTruthModel:
         time_term = math.exp(-(circular / 4.0) ** 2) - 0.35
 
         duration_penalty = max(0.0, ad.duration_seconds - 12.0) * 0.025
+        # Real campaigns drift: weekday mix, local routines and creative fatigue
+        # make yesterday's optimum imperfect today.
+        day_wave = 0.09 * math.sin(
+            2.0 * math.pi * (timestamp.toordinal() % 31) / 31.0 + p.drift_phase
+        )
+        week_wave = 0.05 * math.sin(
+            2.0 * math.pi * timestamp.weekday() / 7.0 + p.drift_phase * 0.63
+        )
+        fatigue = min(5, person.ad_exposures.get(ad.ad_id, 0)) * 0.10
         return (
             p.quality
+            + day_wave
+            + week_wave
             + interest * 0.95
             + gender_term
             + age_term * 0.75
@@ -224,6 +237,9 @@ class GroundTruthModel:
             gaze_p, retention_ratio, completion_p = self.person_expectation(
                 person, distance, detection_radius_km, ad, timestamp, reach
             )
+            # Exposure itself creates mild frequency fatigue even when the
+            # pedestrian does not look directly at the screen.
+            person.ad_exposures[ad.ad_id] = person.ad_exposures.get(ad.ad_id, 0) + 1
             if rng.random() > gaze_p:
                 continue
 

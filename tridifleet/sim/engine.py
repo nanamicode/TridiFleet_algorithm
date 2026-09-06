@@ -8,6 +8,7 @@ import time
 from collections import deque
 from datetime import datetime, timedelta, timezone
 
+from ..config import settings
 from ..intelligence import HybridRetentionIntelligence
 from ..models import Ad
 from ..reward import retention_reward
@@ -174,8 +175,16 @@ class SimulationEngine:
 
     def _new_day_if_needed(self) -> None:
         if self.sim_time.date() != self.current_day:
+            days = max(1, (self.sim_time.date() - self.current_day).days)
             self.current_day = self.sim_time.date()
             self.spend_today.clear()
+            factor = settings.daily_memory_decay ** days
+            self.intelligence.advance_day(factor)
+            self.audit.append(
+                "model_decay",
+                self.sim_time.isoformat(),
+                {"days": days, "factor": factor},
+            )
 
     def _serve_totem(self, totem, current_audience) -> None:
         completed = list(self.exposure_seen.get(totem.totem_id, {}).values())

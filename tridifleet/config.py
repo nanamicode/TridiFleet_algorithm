@@ -9,6 +9,7 @@ class Settings:
     shrinkage_k: float = 20.0
     dwell_exponent: float = 0.60
     impression_exponent: float = 0.40
+    daily_memory_decay: float = 0.965
 
 
 settings = Settings()

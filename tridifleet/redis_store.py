@@ -54,6 +54,20 @@ class RedisStore:
             pipe.sadd(f"tridifleet:posterior_keys:{ad_id}", key)
         pipe.execute()
 
+    def decay_posteriors(self, factor: float) -> None:
+        factor = max(0.0, min(1.0, factor))
+        for raw_ad in self.redis.hvals("tridifleet:ads"):
+            ad = Ad.model_validate_json(raw_ad)
+            keys = self.redis.smembers(f"tridifleet:posterior_keys:{ad.ad_id}")
+            pipe = self.redis.pipeline(transaction=True)
+            for key in keys:
+                p = self.posterior(ad.ad_id, key)
+                alpha = settings.prior_alpha + (p.alpha - settings.prior_alpha) * factor
+                beta = settings.prior_beta + (p.beta - settings.prior_beta) * factor
+                redis_key = f"tridifleet:posterior:{ad.ad_id}:{key}"
+                pipe.hset(redis_key, mapping={"alpha": alpha, "beta": beta})
+            pipe.execute()
+
     def put_decision(self, decision: Decision) -> None:
         self.redis.set(
             f"tridifleet:decision:{decision.decision_id}",

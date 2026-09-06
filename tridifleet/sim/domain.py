@@ -40,6 +40,7 @@ class Person:
     ttl_seconds: float = 1800.0
     prev_x: float = 0.0
     prev_y: float = 0.0
+    ad_exposures: dict[str, int] = field(default_factory=dict)
 
     def advance(self, distance_km: float) -> bool:
         self.prev_x, self.prev_y = self.x, self.y

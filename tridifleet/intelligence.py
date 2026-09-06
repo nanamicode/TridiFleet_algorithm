@@ -117,6 +117,19 @@ class DiagonalBayesianRegressor:
     def predict_mean(self, x: np.ndarray) -> float:
         return float(np.clip(np.dot(self.mean, x), 0.0, 1.0))
 
+    def forget(self, factor: float) -> None:
+        factor = max(0.0, min(1.0, factor))
+        prior_mean = np.zeros(self.dim, dtype=np.float64)
+        prior_mean[0] = 0.35
+        prior_var = np.full(self.dim, self.prior_variance, dtype=np.float64)
+        prior_var[0] = 0.08
+        self.mean = prior_mean + (self.mean - prior_mean) * factor
+        # Forgetting widens uncertainty back toward the prior.
+        self.var = np.minimum(
+            prior_var,
+            prior_var - (prior_var - self.var) * factor,
+        )
+
     def update(self, x: np.ndarray, y: float, weight: float) -> None:
         if weight <= 0:
             return
@@ -261,6 +274,13 @@ class HybridRetentionIntelligence:
 
     def mean_prediction(self, ad: Ad, ctx: ContextEvent) -> float:
         return self.shared.predict_mean(self.encoder.encode(ad, ctx))
+
+    def advance_day(self, factor: float) -> None:
+        factor = max(0.0, min(1.0, factor))
+        if hasattr(self.store, "decay_posteriors"):
+            self.store.decay_posteriors(factor)
+        with self._lock:
+            self.shared.forget(factor)
 
     def trace(self, decision_id: str | None) -> dict | None:
         if not decision_id:

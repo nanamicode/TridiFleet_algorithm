@@ -58,6 +58,13 @@ class MemoryStore:
                 p.alpha += reward * weight
                 p.beta += (1.0 - reward) * weight
 
+    def decay_posteriors(self, factor: float) -> None:
+        factor = max(0.0, min(1.0, factor))
+        with self._lock:
+            for p in self.posteriors.values():
+                p.alpha = settings.prior_alpha + (p.alpha - settings.prior_alpha) * factor
+                p.beta = settings.prior_beta + (p.beta - settings.prior_beta) * factor
+
     def put_decision(self, decision: Decision) -> None:
         with self._lock:
             self.decisions[decision.decision_id] = decision
