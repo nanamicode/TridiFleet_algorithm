@@ -23,3 +23,18 @@ def test_fast_status_does_not_require_full_chain_scan():
     assert fast["events"] == full["events"] == 251
     assert full["chain_valid"] is True
     audit.close()
+
+
+def test_full_verify_detects_tampering():
+    audit = AuditLog(":memory:")
+    audit.start_run("2026-09-05T10:00:00-03:00", {"seed": 9})
+    audit.append("decision", "2026-09-05T10:01:00-03:00", {"ad": "A"})
+    audit.conn.commit()
+    audit.conn.execute(
+        "UPDATE events SET payload_json=? WHERE kind='decision'",
+        ('{"ad":"B"}',),
+    )
+    audit.conn.commit()
+    status = audit.full_verify_status()
+    assert status["chain_valid"] is False
+    audit.close()

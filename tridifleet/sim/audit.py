@@ -144,13 +144,13 @@ class AuditLog:
             for sim_time, kind, payload_json, stored_prev, stored_hash in rows:
                 if stored_prev != prev:
                     self.chain_valid = False
-                    self.chain_valid = False
                     return False, len(rows), prev
                 material = (
                     f"{self.run_id}|{sim_time}|{kind}|{prev}|{payload_json}"
                 ).encode("utf-8")
                 expected = hashlib.sha256(material).hexdigest()
                 if expected != stored_hash:
+                    self.chain_valid = False
                     return False, len(rows), prev
                 prev = stored_hash
             self.chain_valid = True
