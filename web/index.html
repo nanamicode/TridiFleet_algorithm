@@ -128,8 +128,9 @@
       <canvas id="uncertaintyChart" height="180"></canvas>
     </div>
     <div class="integrity-box">
-      <strong>Integridade experimental</strong>
+      <div class="integrity-head"><strong>Integridade experimental</strong><span id="auditBadge">verificando…</span></div>
       <p>O modelo de resposta real fica isolado em <code>sim/ground_truth.py</code>. O motor de inteligência recebe somente contexto, decisão e feedback agregado. Baseline e oracle são calculados apenas pelo avaliador da simulação e nunca retornam como feature de treinamento.</p>
+      <small id="auditMeta"></small>
     </div>
   </aside>
 

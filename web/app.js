@@ -180,10 +180,14 @@ async function updateTotem(id){
 
 async function loadMetrics(){
   state.metrics=await api("/api/lab/metrics");
+  const audit=await api("/api/lab/audit/status");
   $("#metricAi").textContent=pct(state.metrics.observed_reward);
   $("#metricRandom").textContent=pct(state.metrics.random_baseline);
   $("#metricOracle").textContent=pct(state.metrics.oracle_ceiling);
   $("#metricUplift").textContent=(state.metrics.uplift_vs_random>=0?"+":"")+pct(state.metrics.uplift_vs_random);
+  $("#auditBadge").textContent=audit.chain_valid?"cadeia íntegra":"cadeia inválida";
+  $("#auditBadge").classList.toggle("bad",!audit.chain_valid);
+  $("#auditMeta").textContent=audit.events.toLocaleString("pt-BR")+" eventos auditados · run "+String(audit.run_id||"").slice(0,8);
   chart($("#rewardChart"),state.metrics.history,[
     ["observed_reward","#9f7aea"],["random_baseline","#77808f"],["oracle_ceiling","#37d39b"]
   ],0,1);

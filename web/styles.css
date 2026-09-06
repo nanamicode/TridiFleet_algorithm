@@ -40,3 +40,8 @@ input:focus{border-color:var(--purple)}.form-grid{display:grid;grid-template-col
 .candidate.win{border-color:#6e55ad;background:#1b1725}
 .candidate-top{display:flex;justify-content:space-between;gap:10px;font-size:11px}
 .candidate small{display:block;color:#747a88;margin-top:5px;font-size:9px}
+
+.integrity-head{display:flex;align-items:center;justify-content:space-between;gap:12px}
+.integrity-head span{font-size:10px;padding:5px 8px;border-radius:999px;background:#1f332b;color:#6ce3b2}
+.integrity-head span.bad{background:#3b2025;color:#ff8791}
+.integrity-box small{color:#6f7480}

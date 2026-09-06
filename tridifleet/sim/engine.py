@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import math
+import os
 import random
 import threading
 import time
@@ -11,6 +12,7 @@ from ..intelligence import HybridRetentionIntelligence
 from ..models import Ad
 from ..reward import retention_reward
 from ..store import MemoryStore
+from .audit import AuditLog
 from .catalog import default_creatives
 from .city import CityMap
 from .domain import MetricPoint, SimConfig
@@ -45,6 +47,10 @@ class SimulationEngine:
             self.store.put_ad(ad)
 
         self.sim_time = datetime(2026, 9, 1, 6, 0, tzinfo=BRAZIL_TZ)
+        audit_path = os.getenv("TRIDIFLEET_AUDIT_DB", "data/tridifleet_lab.sqlite3")
+        self.audit = AuditLog(audit_path)
+        self.run_id = self.audit.start_run(self.sim_time.isoformat(), self.config)
+
         self.running = False
         self.paused = False
         self.speed = 1.0
@@ -92,6 +98,17 @@ class SimulationEngine:
         self._stop_event.set()
         with self.lock:
             self.running = False
+        thread = self._thread
+        if thread and thread.is_alive() and thread is not threading.current_thread():
+            thread.join(timeout=1.5)
+        try:
+            self.audit.append("run_stop", self.sim_time.isoformat(), {"reason": "stopped"})
+        except Exception:
+            pass
+        try:
+            self.audit.close()
+        except Exception:
+            pass
 
     def set_paused(self, paused: bool) -> None:
         with self.lock:
@@ -181,6 +198,16 @@ class SimulationEngine:
                 )
                 outcome = self.intelligence.apply_feedback(previous_feedback)
                 reward = float(outcome["reward"])
+                self.audit.append(
+                    "feedback",
+                    self.sim_time.isoformat(),
+                    {
+                        "totem_id": totem.totem_id,
+                        "ad_id": ad.ad_id,
+                        "feedback": previous_feedback,
+                        "reward": reward,
+                    },
+                )
                 totem.last_reach = previous_feedback.reach
                 totem.last_impressions = previous_feedback.impressions
                 totem.last_avg_view_seconds = previous_feedback.avg_view_seconds
@@ -220,11 +247,28 @@ class SimulationEngine:
             )
             for ad in candidates
         ]
+        random_expected = sum(expected) / len(expected) if expected else 0.0
+        oracle_expected = max(expected) if expected else 0.0
         if expected:
-            self.recent_random.append(sum(expected) / len(expected))
-            self.recent_oracle.append(max(expected))
+            self.recent_random.append(random_expected)
+            self.recent_oracle.append(oracle_expected)
 
         decision = self.intelligence.choose(totem.totem_id, candidates=candidates)
+        expected_by_ad = {ad.ad_id: value for ad, value in zip(candidates, expected)}
+        self.audit.append(
+            "decision",
+            self.sim_time.isoformat(),
+            {
+                "context": ctx,
+                "decision": decision,
+                "trace": self.intelligence.trace(decision.decision_id),
+                "evaluation_only": {
+                    "random_expected": random_expected,
+                    "oracle_expected": oracle_expected,
+                    "chosen_expected": expected_by_ad.get(decision.ad_id, 0.0),
+                },
+            },
+        )
         self.exposure_seen[totem.totem_id] = {}
         totem.current_ad_id = decision.ad_id
         totem.current_decision_id = decision.decision_id
@@ -272,7 +316,16 @@ class SimulationEngine:
     def add_creative(self, ad: Ad) -> Ad:
         with self.lock:
             self.store.put_ad(ad)
+            self.audit.append(
+                "creative_added",
+                self.sim_time.isoformat(),
+                {"creative": ad},
+            )
             return ad
+
+    def audit_status(self) -> dict:
+        with self.lock:
+            return self.audit.status()
 
     def creative_stats(self) -> list[dict]:
         with self.lock:
@@ -340,6 +393,7 @@ class SimulationEngine:
                 "speed": self.speed,
                 "paused": self.paused,
                 "intelligence": self.intelligence.diagnostics(),
+                "audit": self.audit.status(),
                 "history": [
                     {
                         "timestamp": p.timestamp.isoformat(),

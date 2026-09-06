@@ -230,6 +230,11 @@ def lab_metrics(_: str = Depends(require_admin)):
     return _engine().metrics()
 
 
+@app.get("/api/lab/audit/status")
+def lab_audit_status(_: str = Depends(require_admin)):
+    return _engine().audit_status()
+
+
 @app.get("/api/lab/creatives")
 def lab_creatives(_: str = Depends(require_admin)):
     return _engine().creative_stats()

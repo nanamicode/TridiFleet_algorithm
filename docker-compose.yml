@@ -7,6 +7,9 @@ services:
       REDIS_URL: redis://redis:6379/0
       TRIDIFLEET_ADMIN_USER: admin
       TRIDIFLEET_ADMIN_PASSWORD: tridifleet-local
+      TRIDIFLEET_AUDIT_DB: /app/data/tridifleet_lab.sqlite3
+    volumes:
+      - ./data:/app/data
     depends_on:
       - redis
 
