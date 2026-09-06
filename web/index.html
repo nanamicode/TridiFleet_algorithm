@@ -45,6 +45,7 @@
         <strong id="simClock">—</strong>
       </div>
       <div class="controls">
+        <button id="themeBtn" class="ghost" aria-label="Alternar tema claro e escuro">Tema claro</button>
         <button id="pauseBtn" class="ghost">Pausar</button>
         <div class="segmented" id="speedControl">
           <button data-speed=".25">0,25×</button>
@@ -68,13 +69,14 @@
 
     <section class="workspace">
       <div class="map-shell">
-        <canvas id="cityCanvas"></canvas>
+        <canvas id="cityCanvas" tabindex="0" aria-label="Mapa da cidade. Use as setas para mover, mais e menos para zoom e zero para centralizar."></canvas>
+        <div class="map-tools" role="group" aria-label="Navegação do mapa"><button id="zoomOut" class="ghost" aria-label="Diminuir zoom">−</button><output id="zoomLevel">100%</output><button id="zoomIn" class="ghost" aria-label="Aumentar zoom">+</button><button id="resetView" class="ghost">Centralizar</button></div>
         <div class="map-legend">
           <span><i class="dot person"></i>Pessoa</span>
           <span><i class="dot totem"></i>Totem</span>
           <span><i class="line arterial"></i>Arterial</span>
         </div>
-        <div class="map-hint">Clique em um totem para inspecionar</div>
+        <div class="map-hint">Arraste para mover · Ctrl + roda para zoom · Clique no totem</div>
       </div>
 
       <aside id="totemPanel" class="inspector">

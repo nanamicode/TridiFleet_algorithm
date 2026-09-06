@@ -1,4 +1,7 @@
 const $ = (q)=>document.querySelector(q);
+const camera = {zoom:1,x:0,y:0};
+let theme="dark";
+try{theme=localStorage.getItem("tridifleet-theme")==="light"?"light":"dark"}catch(_){}
 const state = { map:null, snapshot:null, prevSnapshot:null, snapshotAt:0, selected:null, socket:null, metrics:null };
 
 const api = async (url, options={}) => {
@@ -118,13 +121,13 @@ window.addEventListener("resize",resize);
 const project=(x,y)=>{
   const rad=state.map?.radius_km||1, pad=35*devicePixelRatio;
   const w=canvas.width-pad*2,h=canvas.height-pad*2;
-  const scale=Math.min(w,h)/(rad*2);
-  return [canvas.width/2+x*scale,canvas.height/2-y*scale,scale]
+  const scale=Math.min(w,h)/(rad*2)*camera.zoom;
+  return [canvas.width/2+camera.x*devicePixelRatio+x*scale,canvas.height/2+camera.y*devicePixelRatio-y*scale,scale]
 };
 function draw(){
   if(!state.map||!state.snapshot)return;
   ctx.clearRect(0,0,canvas.width,canvas.height);
-  ctx.fillStyle="#090a0e";ctx.fillRect(0,0,canvas.width,canvas.height);
+  ctx.fillStyle=theme==="light"?"#f5f6fa":"#090a0e";ctx.fillRect(0,0,canvas.width,canvas.height);
   for(const z of state.map.zones){
     const [x,y,sc]=project(z.x,z.y);ctx.beginPath();ctx.arc(x,y,z.radius_km*sc,0,Math.PI*2);
     ctx.fillStyle=z.kind==="downtown"?"rgba(139,92,246,.055)":"rgba(255,255,255,.018)";ctx.fill();
@@ -133,7 +136,7 @@ function draw(){
   for(const r of state.map.roads){
     const [x1,y1]=project(r.x1,r.y1),[x2,y2]=project(r.x2,r.y2);
     ctx.beginPath();ctx.moveTo(x1,y1);ctx.lineTo(x2,y2);
-    ctx.strokeStyle=r.kind==="arterial"?"#343844":r.kind==="collector"?"#242832":"#181b22";
+    ctx.strokeStyle=theme==="light"?(r.kind==="arterial"?"#adb5c7":r.kind==="collector"?"#c3c9d6":"#dce0e9"):(r.kind==="arterial"?"#343844":r.kind==="collector"?"#242832":"#181b22");
     ctx.lineWidth=(r.kind==="arterial"?2.2:r.kind==="collector"?1.4:.8)*devicePixelRatio;ctx.stroke();
   }
   const alpha=Math.min(1,Math.max(0,(performance.now()-state.snapshotAt)/500));
@@ -143,7 +146,7 @@ function draw(){
     const px=old?old.x+(p.x-old.x)*alpha:p.x;
     const py=old?old.y+(p.y-old.y)*alpha:p.y;
     const [x,y]=project(px,py);ctx.beginPath();ctx.arc(x,y,1.25*devicePixelRatio,0,Math.PI*2);
-    ctx.fillStyle=p.gender==="F"?"#d5c8f3":"#aab6cc";ctx.globalAlpha=.72;ctx.fill();
+    ctx.fillStyle=theme==="light"?(p.gender==="F"?"#8250b5":"#426282"):(p.gender==="F"?"#d5c8f3":"#aab6cc");ctx.globalAlpha=.72;ctx.fill();
   }
   ctx.globalAlpha=1;
   for(const t of state.snapshot.totems){
@@ -154,7 +157,7 @@ function draw(){
 }
 
 canvas.addEventListener("click",e=>{
-  if(!state.snapshot)return;
+  if(!state.snapshot||suppressMapClick)return;
   const rect=canvas.getBoundingClientRect(),mx=(e.clientX-rect.left)*devicePixelRatio,my=(e.clientY-rect.top)*devicePixelRatio;
   let best=null,bd=Infinity;
   for(const t of state.snapshot.totems){const [x,y]=project(t.x,t.y),d=Math.hypot(x-mx,y-my);if(d<bd){bd=d;best=t}}
@@ -237,3 +240,75 @@ window.addEventListener('unhandledrejection',event=>{
   if(!box){box=document.createElement('div');box.id='networkError';box.setAttribute('role','alert');box.style.cssText='position:fixed;bottom:16px;left:16px;z-index:9999;background:#682b40;color:white;padding:14px;border-radius:10px';document.body.append(box)}
   box.textContent=message==='AUTH'?'Sessão encerrada. Recarregue para entrar.':message;
 });
+
+function setTheme(value){
+  theme=value;document.documentElement.dataset.theme=theme;
+  $("#themeBtn").textContent=theme==="dark"?"Tema claro":"Tema escuro";
+  $("#themeBtn").setAttribute("aria-pressed",String(theme==="light"));
+  try{localStorage.setItem("tridifleet-theme",theme)}catch(_){}
+  draw();
+}
+$("#themeBtn").onclick=()=>setTheme(theme==="dark"?"light":"dark");
+setTheme(theme);
+
+function zoomAt(factor,x=canvas.clientWidth/2,y=canvas.clientHeight/2){
+  const before=camera.zoom;
+  camera.zoom=Math.max(.5,Math.min(16,before*factor));
+  const ratio=camera.zoom/before;
+  camera.x=(camera.x-(x-canvas.clientWidth/2))*ratio+(x-canvas.clientWidth/2);
+  camera.y=(camera.y-(y-canvas.clientHeight/2))*ratio+(y-canvas.clientHeight/2);
+  $("#zoomLevel").textContent=Math.round(camera.zoom*100)+"%";
+  $("#zoomIn").disabled=camera.zoom>=16;
+  $("#zoomOut").disabled=camera.zoom<=.5;
+  draw();
+}
+$("#zoomIn").onclick=()=>zoomAt(1.3);
+$("#zoomOut").onclick=()=>zoomAt(1/1.3);
+$("#resetView").onclick=()=>{camera.zoom=1;camera.x=0;camera.y=0;zoomAt(1)};
+canvas.addEventListener("wheel",e=>{
+  if(!e.ctrlKey&&!e.metaKey)return;
+  e.preventDefault();
+  const rect=canvas.getBoundingClientRect();
+  zoomAt(Math.exp(-Math.max(-100,Math.min(100,e.deltaY))*.008),e.clientX-rect.left,e.clientY-rect.top);
+},{passive:false});
+let suppressMapClick=false;
+const pointers=new Map();
+canvas.addEventListener("pointerdown",e=>{
+  if(e.button!==0)return;
+  if(!pointers.size)suppressMapClick=false;
+  pointers.set(e.pointerId,{x:e.clientX,y:e.clientY,startX:e.clientX,startY:e.clientY});
+  canvas.setPointerCapture(e.pointerId);canvas.classList.add("dragging");
+});
+canvas.addEventListener("pointermove",e=>{
+  const old=pointers.get(e.pointerId);if(!old)return;
+  const previous=[...pointers.values()];
+  const before=previous.length===2?Math.hypot(previous[0].x-previous[1].x,previous[0].y-previous[1].y):0;
+  const dx=e.clientX-old.x,dy=e.clientY-old.y;
+  if(Math.hypot(e.clientX-old.startX,e.clientY-old.startY)>4)suppressMapClick=true;
+  pointers.set(e.pointerId,{...old,x:e.clientX,y:e.clientY});
+  if(pointers.size===1){camera.x+=dx;camera.y+=dy}
+  else if(pointers.size===2){
+    suppressMapClick=true;
+    camera.x+=dx/2;camera.y+=dy/2;
+    const points=[...pointers.values()],rect=canvas.getBoundingClientRect();
+    const after=Math.hypot(points[0].x-points[1].x,points[0].y-points[1].y);
+    if(before>1)zoomAt(after/before,(points[0].x+points[1].x)/2-rect.left,(points[0].y+points[1].y)/2-rect.top);
+  }
+  draw();
+});
+for(const event of ["pointerup","pointercancel","lostpointercapture"]){
+  canvas.addEventListener(event,e=>{pointers.delete(e.pointerId);if(!pointers.size)canvas.classList.remove("dragging")});
+}
+canvas.addEventListener("keydown",e=>{
+  if(!["ArrowLeft","ArrowRight","ArrowUp","ArrowDown","+","=","-","0"].includes(e.key))return;
+  e.preventDefault();
+  if(e.key==="ArrowLeft")camera.x+=40;
+  if(e.key==="ArrowRight")camera.x-=40;
+  if(e.key==="ArrowUp")camera.y+=40;
+  if(e.key==="ArrowDown")camera.y-=40;
+  if(e.key==="+"||e.key==="=")zoomAt(1.3);
+  if(e.key==="-")zoomAt(1/1.3);
+  if(e.key==="0")$("#resetView").click();
+  draw();
+});
+new ResizeObserver(resize).observe(canvas.parentElement);
