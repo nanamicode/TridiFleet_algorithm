@@ -46,7 +46,18 @@ def context_keys(event: ContextEvent) -> list[str]:
     """Hierarchical contexts ordered from broadest to most specific."""
     daypart = _daypart(event.timestamp)
     gender = _gender_bucket(event.female_share)
-    age = _age_bucket(event.mean_age)
+    if event.age_distribution:
+        dominant = max(event.age_distribution.items(), key=lambda item: item[1])[0]
+        age = {
+            "u18": "age_u18",
+            "18-24": "age_18_24",
+            "25-34": "age_25_34",
+            "35-44": "age_35_44",
+            "45-59": "age_45_59",
+            "60+": "age_60_plus",
+        }.get(dominant, _age_bucket(event.mean_age))
+    else:
+        age = _age_bucket(event.mean_age)
 
     keys = [
         "global",

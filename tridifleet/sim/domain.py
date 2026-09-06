@@ -82,6 +82,7 @@ class TotemState:
     last_reward: float = 0.0
     female_share: float = 0.5
     mean_age: float = 38.0
+    age_distribution: dict[str, float] = field(default_factory=dict)
     flow_per_minute: float = 0.0
     plays: int = 0
 

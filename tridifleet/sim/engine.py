@@ -267,6 +267,7 @@ class SimulationEngine:
         self.store.put_context(ctx)
         totem.female_share = ctx.female_share if ctx.female_share is not None else 0.5
         totem.mean_age = ctx.mean_age if ctx.mean_age is not None else 38.0
+        totem.age_distribution = dict(ctx.age_distribution)
         totem.flow_per_minute = ctx.flow_per_minute
 
         candidates = self._eligible_ads()
@@ -417,6 +418,7 @@ class SimulationEngine:
                 "reward": totem.last_reward,
                 "female_share": totem.female_share,
                 "mean_age": totem.mean_age,
+                "age_distribution": dict(totem.age_distribution),
                 "flow_per_minute": totem.flow_per_minute,
                 "plays": totem.plays,
                 "decision_trace": self.intelligence.trace(totem.current_decision_id),

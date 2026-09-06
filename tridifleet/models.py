@@ -27,6 +27,7 @@ class ContextEvent(BaseModel):
     female_share: float | None = Field(default=None, ge=0, le=1)
     mean_age: float | None = Field(default=None, ge=0, le=120)
     age_std: float | None = Field(default=None, ge=0, le=60)
+    age_distribution: dict[str, float] = Field(default_factory=dict)
     flow_per_minute: float = Field(default=0.0, ge=0)
     crowd_density: float = Field(default=0.0, ge=0)
 

@@ -46,6 +46,25 @@ class SimulatedTotemSensor:
             age_std = math.sqrt(sum((a - mean_age) ** 2 for a in ages) / len(ages))
 
         female_share = female_count / reach if reach else None
+        age_distribution: dict[str, float] = {}
+        if ages:
+            counts = {"u18": 0, "18-24": 0, "25-34": 0, "35-44": 0, "45-59": 0, "60+": 0}
+            for age in ages:
+                if age < 18:
+                    key = "u18"
+                elif age < 25:
+                    key = "18-24"
+                elif age < 35:
+                    key = "25-34"
+                elif age < 45:
+                    key = "35-44"
+                elif age < 60:
+                    key = "45-59"
+                else:
+                    key = "60+"
+                counts[key] += 1
+            age_distribution = {k: v / len(ages) for k, v in counts.items()}
+
         previous_impressions = previous.impressions if previous else 0
         flow_per_minute = reach / max(1e-6, decision_interval_seconds / 60.0)
         area_m2 = math.pi * (detection_radius_km * 1000.0) ** 2
@@ -63,6 +82,7 @@ class SimulatedTotemSensor:
             female_share=female_share,
             mean_age=mean_age,
             age_std=age_std,
+            age_distribution=age_distribution,
             flow_per_minute=flow_per_minute,
             crowd_density=crowd_density,
         )

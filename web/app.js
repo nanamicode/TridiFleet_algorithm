@@ -165,11 +165,14 @@ async function updateTotem(id){
     const t=await api("/api/lab/totems/"+encodeURIComponent(id));
     $("#totemTitle").textContent=t.id+" · "+t.region;
     $("#totemSubtitle").textContent=t.current_ad?("Exibindo "+t.current_ad.name):"Aguardando decisão";
+    const ages=t.age_distribution||{};
+    const dominant=Object.keys(ages).length?Object.entries(ages).sort((a,b)=>b[1]-a[1])[0]:["—",0];
     const rows=[
       ["Alcance",t.reach],["Impressões",t.impressions],["Taxa de olhar",pct(t.capture_rate)],
       ["Retenção",t.avg_view_seconds.toFixed(2)+" s"],["Conclusão",pct(t.completion_rate)],
       ["Reward",pct(t.reward)],["Público feminino",pct(t.female_share)],
-      ["Idade média",t.mean_age.toFixed(1)],["Fluxo",t.flow_per_minute.toFixed(1)+"/min"],["Exibições",t.plays]
+      ["Idade média",t.mean_age.toFixed(1)],["Faixa dominante",dominant[0]+" · "+pct(dominant[1])],
+      ["Fluxo",t.flow_per_minute.toFixed(1)+"/min"],["Exibições",t.plays]
     ];
     $("#totemMetrics").innerHTML=rows.map(r=>'<div class="detail"><span>'+esc(r[0])+'</span><strong>'+esc(r[1])+'</strong></div>').join("");
     const trace=t.decision_trace;

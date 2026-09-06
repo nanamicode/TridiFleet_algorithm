@@ -24,11 +24,11 @@ def _signed_hash(text: str, buckets: int) -> tuple[int, float]:
 class FeatureEncoder:
     """Fixed-size feature hashing for arbitrary creative tags + real-valued context."""
 
-    dim = 128
-    tag_start = 20
-    tag_buckets = 28
-    interaction_start = 48
-    interaction_buckets = 80
+    dim = 160
+    tag_start = 24
+    tag_buckets = 32
+    interaction_start = 56
+    interaction_buckets = 104
 
     def encode(self, ad: Ad, ctx: ContextEvent) -> np.ndarray:
         x = np.zeros(self.dim, dtype=np.float64)
@@ -60,6 +60,16 @@ class FeatureEncoder:
         # constrains eligibility/pacing; it must not teach the model that a
         # higher budget makes humans like a creative more.
         x[15] = duration_norm * duration_norm
+
+        age_dist = ctx.age_distribution or {}
+        x[16] = age_dist.get("u18", 0.0)
+        x[17] = age_dist.get("18-24", 0.0)
+        x[18] = age_dist.get("25-34", 0.0)
+        x[19] = age_dist.get("35-44", 0.0)
+        x[20] = age_dist.get("45-59", 0.0)
+        x[21] = age_dist.get("60+", 0.0)
+        x[22] = max(age_dist.values()) if age_dist else 0.0
+        x[23] = 1.0 if age_dist else 0.0
 
         tags = canonical_tags(ad.tags)
         if ad.category:
