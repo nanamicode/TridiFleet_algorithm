@@ -6,14 +6,25 @@ A pergunta central é:
 
 > **Qual criativo deve tocar neste totem, neste momento, para maximizar a atenção visual esperada?**
 
+## Windows: dois cliques
+
+1. Baixe e extraia o ZIP uma vez.
+2. Execute **INICIAR_WINDOWS.bat**. O navegador abre automaticamente.
+3. Nas próximas atualizações, feche a janela do servidor e execute
+   **ATUALIZAR_E_INICIAR.bat**. Ele baixa, instala e abre a versão nova.
+
+Os dados e credenciais são organizados automaticamente em
+`%LOCALAPPDATA%\TridiFleetLab`. Não precisa copiar `data` nem `.env`.
+Uma instalação anterior na mesma pasta é migrada automaticamente no primeiro uso.
+Requer Python 3.11+ instalado; a preparação das dependências é automática.
+
 ## Revisão v3
 
 Avaliação corrigida por resultados amostrados equivalentes, comparação pareada no
 painel, controles contra ganhos artificiais e retomada automática do laboratório.
 Veja [mudanças e validação](docs/REVISAO_V3.md) e [cinco seeds](docs/validation-v3.json).
 
-Para atualizar da v2: encerre o servidor, substitua o código mantendo `data` e `.env`,
-e execute o iniciador novamente. A execução antiga em RAM não pode ser recuperada;
+Para atualizar, feche a janela do servidor e execute `ATUALIZAR_E_INICIAR.bat`. A execução antiga em RAM não pode ser recuperada;
 a partir da v3, o laboratório salva e restaura automaticamente cidade e aprendizado.
 
 ## Estado atual

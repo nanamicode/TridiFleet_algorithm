@@ -3,7 +3,7 @@ setlocal
 cd /d "%~dp0"
 where py >nul 2>nul
 if errorlevel 1 goto python
-py -3 scripts\desktop_start.py
+py -3 scripts\desktop_start.py --update
 if errorlevel 1 goto erro
 exit /b 0
 :python
