@@ -47,3 +47,16 @@ def test_policy_evaluation_metrics_are_well_ordered():
     assert m["oracle_ceiling"] + 1e-9 >= m["random_baseline"]
     assert 0.0 <= m["exploration_rate"] <= 1.0
     assert 0.0 <= m["creative_diversity"] <= 1.0
+
+
+def test_counterfactual_evaluation_is_delayed_until_slot_completion():
+    engine = SimulationEngine(SimConfig(n_totems=4, radius_km=0.8, seed=22))
+    engine.step(1.0)
+    assert engine.total_decisions > 0
+    assert len(engine.recent_policy_expected) == 0
+
+    engine.step(engine.config.decision_interval_sim_seconds + 1.0)
+    # A completed slot must either produce an audience-scored evaluation or be
+    # explicitly skipped only because no pedestrian crossed any totem.
+    assert engine.total_feedback > 0
+    assert len(engine.pending_evaluation) == engine.config.n_totems

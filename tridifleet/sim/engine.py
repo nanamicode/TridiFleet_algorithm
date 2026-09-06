@@ -83,6 +83,10 @@ class SimulationEngine:
         self.exposure_seen: dict[str, dict[int, tuple[object, float]]] = {
             t.totem_id: {} for t in self.city.totems
         }
+        # Counterfactual evaluation is delayed until the slot finishes, so the
+        # chosen policy, random baseline and oracle are all scored on the exact
+        # same pedestrians that were actually exposed.
+        self.pending_evaluation: dict[str, dict] = {}
 
     def start_background(self) -> None:
         with self.lock:
@@ -213,6 +217,60 @@ class SimulationEngine:
                 {"days": days, "factor": factor},
             )
 
+    def _evaluate_completed_slot(self, totem, audience) -> dict | None:
+        pending = self.pending_evaluation.pop(totem.totem_id, None)
+        if pending is None:
+            return None
+
+        candidate_ads = [
+            self.store.ads[ad_id]
+            for ad_id in pending["candidate_ids"]
+            if ad_id in self.store.ads
+        ]
+        if not candidate_ads:
+            return None
+
+        decision_time = pending["decision_time"]
+        elapsed = self.sim_time - decision_time
+        midpoint = decision_time + elapsed / 2
+
+        expected = [
+            self.truth.expected_reward(
+                audience,
+                ad,
+                midpoint,
+                self.config.detection_radius_km,
+            )
+            for ad in candidate_ads
+        ]
+        expected_by_ad = {
+            ad.ad_id: value for ad, value in zip(candidate_ads, expected)
+        }
+        random_expected = sum(expected) / len(expected) if expected else 0.0
+        oracle_expected = max(expected) if expected else 0.0
+        chosen_expected = expected_by_ad.get(pending["chosen_ad_id"], 0.0)
+        regret = max(0.0, oracle_expected - chosen_expected)
+
+        # Empty streets contain no information about policy quality, so they
+        # are audited but excluded from retention/uplift averages.
+        if audience:
+            self.recent_policy_expected.append(chosen_expected)
+            self.recent_random.append(random_expected)
+            self.recent_oracle.append(oracle_expected)
+            self.recent_regret.append(regret)
+            self.recent_exploration.append(float(pending["exploring"]))
+            self.cumulative_regret += regret
+
+        return {
+            "random_expected": random_expected,
+            "oracle_expected": oracle_expected,
+            "chosen_expected": chosen_expected,
+            "regret": regret,
+            "exploration": bool(pending["exploring"]),
+            "audience_size": len(audience),
+            "evaluated_at": midpoint.isoformat(),
+        }
+
     def _serve_totem(self, totem, current_audience) -> None:
         completed = list(self.exposure_seen.get(totem.totem_id, {}).values())
         # The completed slot is the correct population for its delayed outcome.
@@ -224,11 +282,14 @@ class SimulationEngine:
         if totem.current_ad_id and totem.current_decision_id:
             ad = self.store.ads.get(totem.current_ad_id)
             if ad:
+                evaluation = self._evaluate_completed_slot(totem, completed)
+                slot_start = totem.last_decision_at or self.sim_time
+                slot_midpoint = slot_start + (self.sim_time - slot_start) / 2
                 previous_feedback = self.truth.simulate_feedback(
                     decision_id=totem.current_decision_id,
-                    audience=audience,
+                    audience=completed,
                     ad=ad,
-                    timestamp=self.sim_time,
+                    timestamp=slot_midpoint,
                     detection_radius_km=self.config.detection_radius_km,
                     rng=self.rng,
                 )
@@ -242,6 +303,7 @@ class SimulationEngine:
                         "ad_id": ad.ad_id,
                         "feedback": previous_feedback,
                         "reward": reward,
+                        "evaluation_only": evaluation,
                     },
                 )
                 totem.last_reach = previous_feedback.reach
@@ -249,8 +311,9 @@ class SimulationEngine:
                 totem.last_avg_view_seconds = previous_feedback.avg_view_seconds
                 totem.last_completion_rate = previous_feedback.completion_rate or 0.0
                 totem.last_reward = reward
-                self.recent_observed.append(reward)
-                self.rewards_by_ad.setdefault(ad.ad_id, deque(maxlen=300)).append(reward)
+                if float(outcome["evidence_weight"]) > 0:
+                    self.recent_observed.append(reward)
+                    self.rewards_by_ad.setdefault(ad.ad_id, deque(maxlen=300)).append(reward)
                 self.total_feedback += 1
 
                 cost = ad.cost_per_play + previous_feedback.impressions * 0.018
@@ -274,33 +337,17 @@ class SimulationEngine:
         if not candidates:
             return
 
-        # Evaluation sees hidden physics; the intelligence does not.
-        expected = [
-            self.truth.expected_reward(
-                audience,
-                ad,
-                self.sim_time,
-                self.config.detection_radius_km,
-            )
-            for ad in candidates
-        ]
-        random_expected = sum(expected) / len(expected) if expected else 0.0
-        oracle_expected = max(expected) if expected else 0.0
-        if expected:
-            self.recent_random.append(random_expected)
-            self.recent_oracle.append(oracle_expected)
-
         decision = self.intelligence.choose(totem.totem_id, candidates=candidates)
-        expected_by_ad = {ad.ad_id: value for ad, value in zip(candidates, expected)}
-        chosen_expected = expected_by_ad.get(decision.ad_id, 0.0)
-        regret = max(0.0, oracle_expected - chosen_expected)
         global_n = self.store.posterior(decision.ad_id, "global").observations
-        exploring = 1.0 if global_n < 8.0 else 0.0
-        self.recent_policy_expected.append(chosen_expected)
-        self.recent_regret.append(regret)
-        self.recent_exploration.append(exploring)
+        exploring = global_n < 8.0
         self.recent_ad_choices.append(decision.ad_id)
-        self.cumulative_regret += regret
+        self.pending_evaluation[totem.totem_id] = {
+            "decision_id": decision.decision_id,
+            "chosen_ad_id": decision.ad_id,
+            "candidate_ids": [ad.ad_id for ad in candidates],
+            "decision_time": self.sim_time,
+            "exploring": exploring,
+        }
 
         self.audit.append(
             "decision",
@@ -309,13 +356,9 @@ class SimulationEngine:
                 "context": ctx,
                 "decision": decision,
                 "trace": self.intelligence.trace(decision.decision_id),
-                "evaluation_only": {
-                    "random_expected": random_expected,
-                    "oracle_expected": oracle_expected,
-                    "chosen_expected": chosen_expected,
-                    "regret": regret,
-                    "exploration": bool(exploring),
-                },
+                "candidate_ids": [ad.ad_id for ad in candidates],
+                "exploration": exploring,
+                "evaluation_only": "deferred_until_slot_completion",
             },
         )
         self.exposure_seen[totem.totem_id] = {}
