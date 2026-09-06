@@ -180,7 +180,7 @@ class PopulationEngine:
     def serialized_points(self, limit: int = 4000) -> list[dict]:
         values = list(self.people.values())
         if len(values) > limit:
-            values = self.rng.sample(values, k=limit)
+            values = values[::max(1, math.ceil(len(values) / limit))][:limit]
         return [
             {
                 "id": p.person_id,

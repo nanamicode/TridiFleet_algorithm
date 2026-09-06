@@ -1,12 +1,16 @@
 from __future__ import annotations
 
 from datetime import datetime
-from pydantic import BaseModel, Field, model_validator
+from pydantic import BaseModel, Field, model_validator, ConfigDict
 
 
-class Ad(BaseModel):
-    ad_id: str
-    name: str
+class FiniteModel(BaseModel):
+    model_config = ConfigDict(allow_inf_nan=False)
+
+
+class Ad(FiniteModel):
+    ad_id: str = Field(min_length=1, max_length=128)
+    name: str = Field(min_length=1, max_length=200)
     duration_seconds: float = Field(gt=0)
     active: bool = True
     category: str | None = None
@@ -15,7 +19,7 @@ class Ad(BaseModel):
     cost_per_play: float = Field(default=0.06, gt=0)
 
 
-class ContextEvent(BaseModel):
+class ContextEvent(FiniteModel):
     totem_id: str
     timestamp: datetime
     location_id: str | None = None
@@ -31,6 +35,16 @@ class ContextEvent(BaseModel):
     flow_per_minute: float = Field(default=0.0, ge=0)
     crowd_density: float = Field(default=0.0, ge=0)
 
+    @model_validator(mode="after")
+    def valid_demographics(self):
+        allowed = {"u18", "18-24", "25-34", "35-44", "45-59", "60+"}
+        if self.age_distribution:
+            if set(self.age_distribution) - allowed or any(v < 0 or v > 1 for v in self.age_distribution.values()):
+                raise ValueError("invalid age distribution")
+            if abs(sum(self.age_distribution.values()) - 1) > 0.02:
+                raise ValueError("age shares must sum to 1")
+        return self
+
 
 class DecisionRequest(BaseModel):
     totem_id: str
@@ -44,11 +58,12 @@ class Decision(BaseModel):
     sampled_score: float
     context_keys: list[str]
     policy: str = "hybrid_contextual_thompson"
+    ad_duration_seconds: float | None = None
     model_score: float | None = None
     residual_score: float | None = None
 
 
-class Feedback(BaseModel):
+class Feedback(FiniteModel):
     decision_id: str
     reach: int = Field(ge=0)
     impressions: int = Field(ge=0)
@@ -58,8 +73,12 @@ class Feedback(BaseModel):
 
     @model_validator(mode="after")
     def impressions_cannot_exceed_reach(self):
-        if self.reach and self.impressions > self.reach:
+        if self.impressions > self.reach:
             raise ValueError("impressions cannot exceed reach")
+        if self.avg_view_seconds > self.ad_duration_seconds:
+            raise ValueError("continuous viewing cannot exceed creative duration")
+        if self.impressions == 0 and self.avg_view_seconds != 0:
+            raise ValueError("view time requires impressions")
         return self
 
 

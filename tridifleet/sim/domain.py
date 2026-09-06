@@ -94,7 +94,7 @@ class SimConfig:
     seed: int = 42
     base_sim_seconds_per_real_second: float = 120.0
     decision_interval_sim_seconds: float = 60.0
-    detection_radius_km: float = 0.025
+    detection_radius_km: float = 0.006
 
     def validate(self) -> "SimConfig":
         if not 1 <= self.n_totems <= 500:

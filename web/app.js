@@ -38,7 +38,7 @@ $("#loginForm").addEventListener("submit",async e=>{
 $("#setupForm").addEventListener("submit",async e=>{
   e.preventDefault();
   await api("/api/lab/configure",{method:"POST",body:JSON.stringify({
-    n_totems:+$("#nTotems").value,radius_km:+$("#radiusKm").value,seed:+$("#seed").value
+    detection_radius_m:+$("#sensorRadius").value,n_totems:+$("#nTotems").value,radius_km:+$("#radiusKm").value,seed:+$("#seed").value
   })});
   await loadMap(); await api("/api/lab/start",{method:"POST"});
   $("#setupScreen").classList.add("hidden"); connect();
@@ -56,7 +56,8 @@ function connect(){
     state.snapshotAt=performance.now();
     updateUI();
   };
-  state.socket.onclose=()=>setTimeout(()=>{if(!document.hidden)connect()},1200);
+  const socket=state.socket;
+  socket.onclose=()=>setTimeout(()=>{if(state.socket===socket&&!document.hidden)connect()},1200);
 }
 
 $("#pauseBtn").addEventListener("click",async()=>{
@@ -194,7 +195,7 @@ async function loadMetrics(){
   $("#metricUplift").textContent=(state.metrics.uplift_vs_random>=0?"+":"")+pct(state.metrics.uplift_vs_random);
   $("#metricDiversity").textContent=pct(state.metrics.creative_diversity);
   $("#metricUncertainty").textContent=Number(state.metrics.intelligence?.mean_parameter_uncertainty||0).toFixed(4);
-  $("#auditBadge").textContent=audit.chain_valid?"cadeia íntegra":"cadeia inválida";
+  $("#auditBadge").textContent=audit.chain_valid?"registro ativo; verificação manual disponível":"cadeia inválida";
   $("#auditBadge").classList.toggle("bad",!audit.chain_valid);
   $("#auditMeta").textContent=audit.events.toLocaleString("pt-BR")+" eventos auditados · run "+String(audit.run_id||"").slice(0,8);
   chart($("#rewardChart"),state.metrics.history,[
@@ -205,7 +206,7 @@ async function loadMetrics(){
 setInterval(()=>{if($("#metricsDrawer").classList.contains("open"))loadMetrics()},3000);
 
 function chart(el,data,series,minY,maxY){
-  const c=el.getContext("2d"),dpr=devicePixelRatio,w=el.clientWidth*dpr,h=el.height*dpr;el.width=w;el.height=h;c.clearRect(0,0,w,h);
+  const c=el.getContext("2d"),dpr=devicePixelRatio,w=el.clientWidth*dpr,h=180*dpr;el.width=w;el.height=h;c.clearRect(0,0,w,h);
   c.strokeStyle="#2a2d36";c.lineWidth=1*dpr;
   for(let i=1;i<5;i++){const y=h*i/5;c.beginPath();c.moveTo(0,y);c.lineTo(w,y);c.stroke()}
   if(!data.length)return;
@@ -217,3 +218,22 @@ boot();
 
 function renderLoop(){draw();requestAnimationFrame(renderLoop)}
 requestAnimationFrame(renderLoop);
+
+document.addEventListener("visibilitychange",()=>{if(!document.hidden&&state.map&&(!state.socket||state.socket.readyState===WebSocket.CLOSED))connect()});
+
+$("#verifyAuditBtn").onclick=async()=>{
+  const result=await api('/api/lab/audit/verify',{method:'POST'});
+  $("#auditBadge").textContent=result.chain_valid?'Histórico verificado':'Falha na integridade';
+};
+$("#exportMetricsBtn").onclick=async()=>{
+  const metrics=await api('/api/lab/metrics');
+  const url=URL.createObjectURL(new Blob([JSON.stringify(metrics,null,2)],{type:'application/json'}));
+  const a=document.createElement('a');a.href=url;a.download='tridifleet-metricas.json';a.click();
+  setTimeout(()=>URL.revokeObjectURL(url),1000);
+};
+window.addEventListener('unhandledrejection',event=>{
+  const message=event.reason?.message||'Falha de comunicação com o servidor';
+  let box=document.querySelector('#networkError');
+  if(!box){box=document.createElement('div');box.id='networkError';box.setAttribute('role','alert');box.style.cssText='position:fixed;bottom:16px;left:16px;z-index:9999;background:#682b40;color:white;padding:14px;border-radius:10px';document.body.append(box)}
+  box.textContent=message==='AUTH'?'Sessão encerrada. Recarregue para entrar.':message;
+});

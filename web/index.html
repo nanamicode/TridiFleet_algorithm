@@ -26,6 +26,7 @@
       <p>A cidade e a população serão geradas proceduralmente. A IA não terá acesso à física oculta da simulação.</p>
       <div class="form-grid">
         <label>Totens<input id="nTotems" type="number" min="1" max="500" value="60" /></label>
+        <label>Alcance do sensor (m)<input id="sensorRadius" type="number" min="1" max="30" value="6" /></label>
         <label>Raio da cidade (km)<input id="radiusKm" type="number" min=".5" max="25" step=".5" value="4" /></label>
         <label>Seed<input id="seed" type="number" min="0" value="42" /></label>
       </div>
@@ -120,20 +121,22 @@
       <div><span>Random</span><strong id="metricRandom">—</strong></div>
       <div><span>Oracle oculto</span><strong id="metricOracle">—</strong></div>
       <div><span>Regret médio</span><strong id="metricRegret">—</strong></div>
-      <div><span>Exploração</span><strong id="metricExplore">—</strong></div>
+      <div><span>Criativos com pouca evidência</span><strong id="metricExplore">—</strong></div>
     </div>
     <div class="chart-card">
       <div class="chart-title"><strong>Qualidade da política ao longo do tempo</strong><span>esperada vs baseline vs teto oculto</span></div>
       <canvas id="rewardChart" height="260"></canvas>
     </div>
     <div class="chart-card">
-      <div class="chart-title"><strong>Incerteza do modelo</strong><span>Deve cair conforme os dados chegam</span></div>
+      <div class="chart-title"><strong>Incerteza do modelo</strong><span>Aprendizado reduz; esquecimento diário aumenta</span></div>
       <canvas id="uncertaintyChart" height="180"></canvas>
     </div>
     <div class="integrity-box">
       <div class="secondary-metrics"><span>Uplift <strong id="metricUplift">—</strong></span><span>Diversidade <strong id="metricDiversity">—</strong></span><span>Incerteza <strong id="metricUncertainty">—</strong></span></div>
       <div class="integrity-head"><strong>Integridade experimental</strong><span id="auditBadge">verificando…</span></div>
       <p>O modelo de resposta real fica isolado em <code>sim/ground_truth.py</code>. O motor de inteligência recebe somente contexto, decisão e feedback agregado. Baseline e oracle são calculados apenas pelo avaliador da simulação e nunca retornam como feature de treinamento.</p>
+      <p>O ganho exibido compara escores do mundo sintético na mesma audiência. Não é uma medição de ganho em pessoas reais. A física usa passos de 1 segundo; o relógio nominal representa 120 segundos simulados por segundo de execução, sujeito à capacidade do computador.</p>
+      <button id="verifyAuditBtn">Verificar histórico completo</button> <button id="exportMetricsBtn">Exportar métricas JSON</button>
       <small id="auditMeta"></small>
     </div>
   </aside>

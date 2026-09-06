@@ -79,6 +79,9 @@ class RedisStore:
         raw = self.redis.get(f"tridifleet:decision:{decision_id}")
         return Decision.model_validate_json(raw) if raw else None
 
+    def delete_decision(self, decision_id: str) -> None:
+        self.redis.delete(f"tridifleet:decision:{decision_id}")
+
     def list_posteriors(self, ad_id: str) -> list[tuple[str, Posterior]]:
         keys = sorted(self.redis.smembers(f"tridifleet:posterior_keys:{ad_id}"))
         return [(key, self.posterior(ad_id, key)) for key in keys]

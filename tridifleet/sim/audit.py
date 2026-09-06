@@ -157,22 +157,24 @@ class AuditLog:
                 FROM events WHERE run_id=? ORDER BY seq
                 """,
                 (self.run_id,),
-            ).fetchall()
+            )
+            count = 0
             prev = "GENESIS"
             for sim_time, kind, payload_json, stored_prev, stored_hash in rows:
+                count += 1
                 if stored_prev != prev:
                     self.chain_valid = False
-                    return False, len(rows), prev
+                    return False, count, prev
                 material = (
                     f"{self.run_id}|{sim_time}|{kind}|{prev}|{payload_json}"
                 ).encode("utf-8")
                 expected = hashlib.sha256(material).hexdigest()
                 if expected != stored_hash:
                     self.chain_valid = False
-                    return False, len(rows), prev
+                    return False, count, prev
                 prev = stored_hash
             self.chain_valid = True
-            return True, len(rows), prev
+            return True, count, prev
 
     def status(self) -> dict:
         # Fast path for the live dashboard. Full O(N) verification is explicit.

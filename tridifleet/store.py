@@ -73,6 +73,10 @@ class MemoryStore:
         with self._lock:
             return self.decisions.get(decision_id)
 
+    def delete_decision(self, decision_id: str) -> None:
+        with self._lock:
+            self.decisions.pop(decision_id, None)
+
     def list_posteriors(self, ad_id: str) -> list[tuple[str, Posterior]]:
         with self._lock:
             return sorted(

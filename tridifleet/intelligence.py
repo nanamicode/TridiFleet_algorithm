@@ -4,6 +4,8 @@ import hashlib
 import math
 import threading
 import uuid
+from collections import OrderedDict
+from functools import wraps
 from dataclasses import dataclass
 
 import numpy as np
@@ -13,6 +15,14 @@ from .context import context_keys
 from .models import Ad, ContextEvent, Decision, Feedback
 from .reward import evidence_weight, retention_reward
 from .taxonomy import canonical_tag, canonical_tags
+
+
+def synchronized(method):
+    @wraps(method)
+    def wrapped(self, *args, **kwargs):
+        with self._lock:
+            return method(self, *args, **kwargs)
+    return wrapped
 
 
 def _signed_hash(text: str, buckets: int) -> tuple[int, float]:
@@ -82,7 +92,7 @@ class FeatureEncoder:
         time_sin = x[6]
         flow = x[4]
 
-        for tag in tags:
+        for tag in sorted(tags):
             bucket, sign = _signed_hash(f"tag:{tag}", self.tag_buckets)
             x[self.tag_start + bucket] += sign
 
@@ -170,6 +180,8 @@ class HybridRetentionIntelligence:
         self.shared = DiagonalBayesianRegressor(self.encoder.dim)
         self.rng = np.random.default_rng(seed)
         self.residual = HierarchicalThompsonBandit(store, seed=seed)
+        self._completed = OrderedDict()
+        self.max_pending = 10000
         self._decision_features: dict[str, tuple[np.ndarray, str, list[str]]] = {}
         self._decision_traces: dict[str, dict] = {}
         self._trace_order: list[str] = []
@@ -177,7 +189,10 @@ class HybridRetentionIntelligence:
         self.total_updates = 0
         self.total_reward = 0.0
 
+    @synchronized
     def choose(self, totem_id: str, candidates: list[Ad] | None = None) -> Decision:
+        if len(self._decision_features) >= self.max_pending:
+            raise RuntimeError("pending feedback capacity reached; submit feedback before requesting more decisions")
         ctx = self.store.get_context(totem_id)
         if ctx is None:
             raise KeyError(f"no context registered for totem {totem_id}")
@@ -217,6 +232,7 @@ class HybridRetentionIntelligence:
             sampled_score=float(score),
             context_keys=keys,
             policy=self.policy_name,
+            ad_duration_seconds=winner.duration_seconds,
             model_score=float(model_score),
             residual_score=float(residual_score),
         )
@@ -255,36 +271,47 @@ class HybridRetentionIntelligence:
                 self._decision_traces.pop(old, None)
         return decision
 
-    def apply_feedback(self, feedback: Feedback) -> dict[str, float | str]:
+    @synchronized
+    def apply_feedback(self, feedback: Feedback) -> dict:
+        payload = feedback.model_dump(mode="json")
+        previous = self._completed.get(feedback.decision_id)
+        if previous is not None:
+            if previous[0] != payload:
+                raise ValueError("conflicting feedback for an already completed decision")
+            return {**previous[1], "duplicate": True}
         decision = self.store.get_decision(feedback.decision_id)
         if decision is None:
-            raise KeyError("unknown decision_id")
-
+            raise KeyError("unknown or expired decision_id")
+        if decision.ad_duration_seconds is not None and not math.isclose(
+            feedback.ad_duration_seconds, decision.ad_duration_seconds, rel_tol=1e-6
+        ):
+            raise ValueError("feedback duration differs from the selected creative")
+        cached = self._decision_features.get(feedback.decision_id)
+        if cached is None:
+            raise ValueError("decision belongs to another learner session; shared features unavailable")
         reward = retention_reward(feedback)
         weight = evidence_weight(feedback)
-
         if weight > 0:
             self.store.update(decision.ad_id, decision.context_keys, reward, weight)
-
-            with self._lock:
-                cached = self._decision_features.pop(feedback.decision_id, None)
-            if cached is not None:
-                features, _, _ = cached
-                self.shared.update(features, reward, weight)
+            self.shared.update(cached[0], reward, weight)
             self.total_updates += 1
             self.total_reward += reward
-
-        return {
-            "decision_id": decision.decision_id,
-            "ad_id": decision.ad_id,
-            "reward": reward,
-            "evidence_weight": weight,
-            "policy": self.policy_name,
+        result = {
+            "decision_id": decision.decision_id, "ad_id": decision.ad_id,
+            "reward": reward, "evidence_weight": weight,
+            "policy": self.policy_name, "duplicate": False,
         }
+        self._decision_features.pop(feedback.decision_id, None)
+        self.store.delete_decision(feedback.decision_id)
+        self._completed[feedback.decision_id] = (payload, result)
+        if len(self._completed) > 10000:
+            self._completed.popitem(last=False)
+        return result
 
     def mean_prediction(self, ad: Ad, ctx: ContextEvent) -> float:
         return self.shared.predict_mean(self.encoder.encode(ad, ctx))
 
+    @synchronized
     def advance_day(self, factor: float) -> None:
         factor = max(0.0, min(1.0, factor))
         if hasattr(self.store, "decay_posteriors"):

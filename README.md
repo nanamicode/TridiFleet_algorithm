@@ -53,6 +53,22 @@ Documentação de integridade experimental: `docs/DIGITAL_TWIN.md`.
 
 Arquitetura do motor: `docs/ARCHITECTURE.md`.
 
+## Iniciar no seu computador
+
+Baixe este repositório em **Code → Download ZIP** e extraia tudo.
+
+- **Windows:** instale Python 3.11+ e dê dois cliques em `INICIAR_WINDOWS.bat`.
+- **Linux:** execute `bash iniciar_linux.sh` na pasta extraída.
+- Abra **http://localhost:8000**. Login inicial: **admin / tridifleet-local**.
+- Para definir seu login fixo, edite `.env` (criado pelo iniciador) e reinicie.
+- Escolha os totens, raio da cidade, alcance do sensor e seed; gere a cidade.
+- Feche a aba à vontade, mas mantenha o servidor aberto. Com Docker,
+  `docker compose up -d --build` mantém o servidor em segundo plano.
+
+Leia [validação e limites](docs/VALIDACAO_E_LIMITES.md) e o
+[relatório de cinco seeds](docs/validation.json). Reiniciar o processo preserva
+os logs, mas não restaura automaticamente a cidade ou o aprendiz.
+
 ## Rodar
 
 ### Docker — recomendado

@@ -84,9 +84,9 @@ class GroundTruthModel:
             "fashion", "technology", "cars", "home", "education", "finance",
             "travel", "entertainment", "services",
         }
-        interest_weights = {k: rng.uniform(-0.12, 0.18) for k in all_interests}
+        interest_weights = {k: rng.uniform(-0.12, 0.18) for k in sorted(all_interests)}
         mapped = {interest for tag in tags for interest in TAG_INTERESTS.get(tag, ())}
-        for interest in mapped:
+        for interest in sorted(mapped):
             interest_weights[interest] = rng.uniform(0.65, 1.20)
 
         female_bias = rng.uniform(-0.18, 0.18)
@@ -125,7 +125,7 @@ class GroundTruthModel:
 
     def _affinity(self, person: Person, ad: Ad, timestamp: datetime) -> float:
         p = self.profile(ad)
-        interest = sum(p.interest_weights.get(i, 0.0) for i in person.interests)
+        interest = sum(p.interest_weights.get(i, 0.0) for i in sorted(person.interests))
         interest /= max(1.6, len(person.interests) ** 0.5)
         gender_term = p.female_bias * (1.0 if person.female else -1.0)
         age_term = math.exp(-abs(person.age - p.target_age) / p.age_width) - 0.45
@@ -197,6 +197,7 @@ class GroundTruthModel:
         ad: Ad,
         timestamp: datetime,
         detection_radius_km: float,
+        exposure_seconds: dict[int, float] | None = None,
     ) -> float:
         if not audience:
             return 0.0
@@ -207,6 +208,8 @@ class GroundTruthModel:
             gaze, retention, completion = self.person_expectation(
                 person, distance, detection_radius_km, ad, timestamp, len(audience)
             )
+            if exposure_seconds is not None:
+                retention = min(retention, exposure_seconds.get(person.person_id, 0) / ad.duration_seconds)
             gaze_sum += gaze
             dwell_weighted += gaze * retention
             completion_weighted += gaze * completion
@@ -229,6 +232,7 @@ class GroundTruthModel:
         timestamp: datetime,
         detection_radius_km: float,
         rng: random.Random,
+        exposure_seconds: dict[int, float] | None = None,
     ) -> Feedback:
         reach = len(audience)
         dwell_seconds: list[float] = []
@@ -246,9 +250,11 @@ class GroundTruthModel:
 
             # Individual dwell is noisy, but centered on the hidden expected response.
             ratio = max(0.02, min(1.0, rng.gauss(retention_ratio, 0.13)))
+            if exposure_seconds is not None:
+                ratio = min(ratio, exposure_seconds.get(person.person_id, 0) / ad.duration_seconds)
             dwell = ratio * ad.duration_seconds
             dwell_seconds.append(dwell)
-            if ratio >= 0.85 or rng.random() < completion_p * 0.18:
+            if ratio >= 0.85:
                 completions += 1
 
         impressions = len(dwell_seconds)

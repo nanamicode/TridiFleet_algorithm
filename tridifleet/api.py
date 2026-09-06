@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import os
+from contextlib import asynccontextmanager
 from pathlib import Path
 
 from fastapi import Depends, FastAPI, HTTPException, Request, Response, WebSocket, WebSocketDisconnect
@@ -31,7 +32,16 @@ intelligence = HybridRetentionIntelligence(store)
 service = RetentionService(store, intelligence)
 simulation = SimulationManager()
 
+@asynccontextmanager
+async def lifespan(app):
+    yield
+    engine = simulation.get()
+    if engine:
+        engine.stop()
+
+
 app = FastAPI(
+    lifespan=lifespan,
     title="TridiFleet Retention Engine",
     version="0.2.0",
     description="Contextual retention intelligence + local digital-twin laboratory",
@@ -49,6 +59,7 @@ class LoginBody(BaseModel):
 class ConfigureBody(BaseModel):
     n_totems: int = Field(ge=1, le=500)
     radius_km: float = Field(ge=0.5, le=25)
+    detection_radius_m: float = Field(default=6, ge=1, le=30)
     seed: int = Field(default=42, ge=0, le=2_147_483_647)
 
 
@@ -125,6 +136,8 @@ def feedback(payload: Feedback, _: str = Depends(require_admin)):
         return service.apply_feedback(payload)
     except KeyError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
 
 
 @app.get("/api/v1/posteriors/{ad_id}", response_model=list[PosteriorView])
@@ -182,6 +195,7 @@ def lab_configure(body: ConfigureBody, _: str = Depends(require_admin)):
                 n_totems=body.n_totems,
                 radius_km=body.radius_km,
                 seed=body.seed,
+                detection_radius_km=body.detection_radius_m / 1000,
             )
         )
     except ValueError as exc:

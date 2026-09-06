@@ -1,12 +1,13 @@
 services:
   api:
     build: .
+    restart: unless-stopped
     ports:
       - "127.0.0.1:8000:8000"
     environment:
       REDIS_URL: redis://redis:6379/0
-      TRIDIFLEET_ADMIN_USER: admin
-      TRIDIFLEET_ADMIN_PASSWORD: tridifleet-local
+      TRIDIFLEET_ADMIN_USER: ${TRIDIFLEET_ADMIN_USER:-admin}
+      TRIDIFLEET_ADMIN_PASSWORD: ${TRIDIFLEET_ADMIN_PASSWORD:-tridifleet-local}
       TRIDIFLEET_AUDIT_DB: /app/data/tridifleet_lab.sqlite3
     volumes:
       - ./data:/app/data

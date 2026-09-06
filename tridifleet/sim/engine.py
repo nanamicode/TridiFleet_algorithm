@@ -52,6 +52,10 @@ class SimulationEngine:
         self.audit = AuditLog(audit_path)
         self.run_id = self.audit.start_run(self.sim_time.isoformat(), self.config)
 
+        self._step_remainder = 0.0
+        self.exposure_seconds = {t.totem_id: {} for t in self.city.totems}
+        self.exposure_streak = {t.totem_id: {} for t in self.city.totems}
+        self.last_error = None
         self.running = False
         self.paused = False
         self.speed = 1.0
@@ -111,7 +115,7 @@ class SimulationEngine:
             self.running = False
         thread = self._thread
         if thread and thread.is_alive() and thread is not threading.current_thread():
-            thread.join(timeout=1.5)
+            thread.join()
         try:
             self.audit.append("run_stop", self.sim_time.isoformat(), {"reason": "stopped"})
         except Exception:
@@ -146,7 +150,14 @@ class SimulationEngine:
                 speed = self.speed
             if active and wall_dt > 0:
                 sim_dt = wall_dt * self.config.base_sim_seconds_per_real_second * speed
-                self.step(sim_dt)
+                try:
+                    self.step(sim_dt)
+                except Exception as exc:
+                    import logging
+                    logging.exception("Simulation stopped after processing error")
+                    with self.lock:
+                        self.last_error = str(exc)
+                        self.running = False
             time.sleep(0.08)
 
     def _eligible_ads(self) -> list[Ad]:
@@ -154,7 +165,7 @@ class SimulationEngine:
         return [
             ad
             for ad in ads
-            if self.spend_today.get(ad.ad_id, 0.0) + 1e-9 < ad.daily_budget
+            if self.spend_today.get(ad.ad_id, 0.0) + ad.cost_per_play <= ad.daily_budget + 1e-9
         ]
 
     def _mean(self, values: deque[float]) -> float:
@@ -240,6 +251,7 @@ class SimulationEngine:
                 ad,
                 midpoint,
                 self.config.detection_radius_km,
+                exposure_seconds=self.exposure_seconds[totem.totem_id],
             )
             for ad in candidate_ads
         ]
@@ -292,6 +304,7 @@ class SimulationEngine:
                     timestamp=slot_midpoint,
                     detection_radius_km=self.config.detection_radius_km,
                     rng=self.rng,
+                    exposure_seconds=self.exposure_seconds[totem.totem_id],
                 )
                 outcome = self.intelligence.apply_feedback(previous_feedback)
                 reward = float(outcome["reward"])
@@ -316,12 +329,6 @@ class SimulationEngine:
                     self.rewards_by_ad.setdefault(ad.ad_id, deque(maxlen=300)).append(reward)
                 self.total_feedback += 1
 
-                cost = ad.cost_per_play + previous_feedback.impressions * 0.018
-                current_spend = self.spend_today.get(ad.ad_id, 0.0)
-                self.spend_today[ad.ad_id] = min(
-                    ad.daily_budget,
-                    current_spend + cost,
-                )
 
         ctx = self.sensor.context(
             totem=totem,
@@ -356,6 +363,8 @@ class SimulationEngine:
             return
 
         decision = self.intelligence.choose(totem.totem_id, candidates=candidates)
+        chosen_ad = self.store.ads[decision.ad_id]
+        self.spend_today[decision.ad_id] = self.spend_today.get(decision.ad_id, 0.0) + chosen_ad.cost_per_play
         global_n = self.store.posterior(decision.ad_id, "global").observations
         exploring = global_n < 8.0
         self.recent_ad_choices.append(decision.ad_id)
@@ -380,6 +389,8 @@ class SimulationEngine:
             },
         )
         self.exposure_seen[totem.totem_id] = {}
+        self.exposure_seconds[totem.totem_id] = {}
+        self.exposure_streak[totem.totem_id] = {}
         totem.current_ad_id = decision.ad_id
         totem.current_decision_id = decision.decision_id
         totem.last_decision_at = self.sim_time
@@ -389,8 +400,15 @@ class SimulationEngine:
         self.total_events += 1
 
     def step(self, sim_dt_seconds: float) -> None:
-        if sim_dt_seconds <= 0:
-            return
+        if not math.isfinite(sim_dt_seconds) or sim_dt_seconds < 0:
+            raise ValueError("step must be finite and nonnegative")
+        with self.lock:
+            self._step_remainder += sim_dt_seconds
+            while self._step_remainder >= 1.0:
+                self._tick(1.0)
+                self._step_remainder -= 1.0
+
+    def _tick(self, sim_dt_seconds: float) -> None:
         with self.lock:
             self.sim_time += timedelta(seconds=sim_dt_seconds)
             self._new_day_if_needed()
@@ -408,7 +426,13 @@ class SimulationEngine:
                 # exposed while the current creative is on screen.
                 if totem.current_ad_id:
                     bucket = self.exposure_seen.setdefault(totem.totem_id, {})
+                    previous_streak = self.exposure_streak[totem.totem_id]
+                    streak = {}
+                    self.exposure_streak[totem.totem_id] = streak
                     for person, distance in current_audience:
+                        durations = self.exposure_seconds[totem.totem_id]
+                        streak[person.person_id] = previous_streak.get(person.person_id, 0.0) + sim_dt_seconds
+                        durations[person.person_id] = max(durations.get(person.person_id, 0.0), streak[person.person_id])
                         prev = bucket.get(person.person_id)
                         if prev is None or distance < prev[1]:
                             bucket[person.person_id] = (person, distance)
@@ -536,6 +560,7 @@ class SimulationEngine:
             ads = {ad.ad_id: ad.name for ad in self.store.active_ads()}
             return {
                 "configured": True,
+                "last_error": self.last_error,
                 "running": self.running,
                 "paused": self.paused,
                 "speed": self.speed,

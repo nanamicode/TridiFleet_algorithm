@@ -1,0 +1,69 @@
+{
+  "hours_per_seed": 3,
+  "detection_radius_m": 6,
+  "results": [
+    {
+      "decisions": 1800,
+      "feedback_events": 1790,
+      "observed_reward": 0.321462479971042,
+      "policy_expected": 0.435705982932425,
+      "random_baseline": 0.3851462509036853,
+      "oracle_ceiling": 0.5969666950590273,
+      "uplift_vs_random": 0.13127411187337068,
+      "mean_regret": 0.16126071212660228,
+      "seed": 42,
+      "elapsed_seconds": 8.723
+    },
+    {
+      "decisions": 1800,
+      "feedback_events": 1790,
+      "observed_reward": 0.3587723588890357,
+      "policy_expected": 0.4709894703099466,
+      "random_baseline": 0.3948037676094388,
+      "oracle_ceiling": 0.5760429898933928,
+      "uplift_vs_random": 0.1929710629708954,
+      "mean_regret": 0.10505351958344608,
+      "seed": 76,
+      "elapsed_seconds": 8.508
+    },
+    {
+      "decisions": 1800,
+      "feedback_events": 1790,
+      "observed_reward": 0.33626125496900144,
+      "policy_expected": 0.470519396745899,
+      "random_baseline": 0.39799733663041903,
+      "oracle_ceiling": 0.6226454682375161,
+      "uplift_vs_random": 0.18221745082385832,
+      "mean_regret": 0.1521260714916171,
+      "seed": 31415,
+      "elapsed_seconds": 8.931
+    },
+    {
+      "decisions": 1800,
+      "feedback_events": 1790,
+      "observed_reward": 0.35602646346200245,
+      "policy_expected": 0.46492437618166177,
+      "random_baseline": 0.4010691030548033,
+      "oracle_ceiling": 0.5745187167629443,
+      "uplift_vs_random": 0.15921264600163698,
+      "mean_regret": 0.10959434058128255,
+      "seed": 2026,
+      "elapsed_seconds": 9.341
+    },
+    {
+      "decisions": 1800,
+      "feedback_events": 1790,
+      "observed_reward": 0.28039383752817726,
+      "policy_expected": 0.4308918122898975,
+      "random_baseline": 0.3734228999343744,
+      "oracle_ceiling": 0.5832271131318892,
+      "uplift_vs_random": 0.15389766499489643,
+      "mean_regret": 0.15233530084199182,
+      "seed": 90210,
+      "elapsed_seconds": 7.514
+    }
+  ],
+  "mean_uplift": 0.16391458733293157,
+  "min_uplift": 0.13127411187337068,
+  "interpretation": "Synthetic plug-in reward score on matched audiences, not an observed A/B gain or a guarantee for real cities."
+}
