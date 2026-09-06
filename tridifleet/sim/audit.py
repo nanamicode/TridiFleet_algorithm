@@ -51,8 +51,9 @@ class AuditLog:
         self.run_id: str | None = None
         self.last_hash = "GENESIS"
         self.event_count = 0
-        self.pending = 0
+        self.pending_rows: list[tuple[str, str, str, str, str, str]] = []
         self.flush_every = 100
+        self.flush_seconds = 1.0
         self.last_flush = time.monotonic()
         self.chain_valid = True
 
@@ -69,7 +70,7 @@ class AuditLog:
             self.run_id = run_id
             self.last_hash = "GENESIS"
             self.event_count = 0
-            self.pending = 0
+            self.pending_rows.clear()
             self.chain_valid = True
             self.append("run_start", started_at, {"config": payload})
             return run_id
@@ -102,11 +103,7 @@ class AuditLog:
                 f"{self.run_id}|{sim_time}|{kind}|{self.last_hash}|{payload_json}"
             ).encode("utf-8")
             event_hash = hashlib.sha256(material).hexdigest()
-            self.conn.execute(
-                """
-                INSERT INTO events(run_id, sim_time, kind, payload_json, prev_hash, event_hash)
-                VALUES(?,?,?,?,?,?)
-                """,
+            self.pending_rows.append(
                 (
                     self.run_id,
                     sim_time,
@@ -114,25 +111,46 @@ class AuditLog:
                     payload_json,
                     self.last_hash,
                     event_hash,
-                ),
+                )
             )
             self.last_hash = event_hash
             self.event_count += 1
-            self.pending += 1
             now = time.monotonic()
-            if self.pending >= self.flush_every or now - self.last_flush >= 2.0:
-                self.conn.commit()
-                self.pending = 0
-                self.last_flush = now
+            if (
+                len(self.pending_rows) >= self.flush_every
+                or now - self.last_flush >= self.flush_seconds
+            ):
+                self.flush()
             return event_hash
+
+    def flush(self) -> None:
+        with self.lock:
+            if not self.pending_rows:
+                return
+            rows = list(self.pending_rows)
+            self.pending_rows.clear()
+            try:
+                self.conn.executemany(
+                    """
+                    INSERT INTO events(
+                        run_id, sim_time, kind, payload_json, prev_hash, event_hash
+                    ) VALUES(?,?,?,?,?,?)
+                    """,
+                    rows,
+                )
+                self.conn.commit()
+                self.last_flush = time.monotonic()
+            except Exception:
+                self.conn.rollback()
+                # Preserve order and retryability if storage is temporarily busy.
+                self.pending_rows = rows + self.pending_rows
+                raise
 
     def verify(self) -> tuple[bool, int, str]:
         with self.lock:
             if not self.run_id:
                 return True, 0, "GENESIS"
-            self.conn.commit()
-            self.pending = 0
-            self.last_flush = time.monotonic()
+            self.flush()
             rows = self.conn.execute(
                 """
                 SELECT sim_time, kind, payload_json, prev_hash, event_hash
@@ -178,5 +196,5 @@ class AuditLog:
 
     def close(self) -> None:
         with self.lock:
-            self.conn.commit()
+            self.flush()
             self.conn.close()

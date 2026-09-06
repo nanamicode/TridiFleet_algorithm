@@ -29,7 +29,7 @@ def test_full_verify_detects_tampering():
     audit = AuditLog(":memory:")
     audit.start_run("2026-09-05T10:00:00-03:00", {"seed": 9})
     audit.append("decision", "2026-09-05T10:01:00-03:00", {"ad": "A"})
-    audit.conn.commit()
+    audit.flush()
     audit.conn.execute(
         "UPDATE events SET payload_json=? WHERE kind='decision'",
         ('{"ad":"B"}',),
