@@ -235,6 +235,11 @@ def lab_audit_status(_: str = Depends(require_admin)):
     return _engine().audit_status()
 
 
+@app.post("/api/lab/audit/verify")
+def lab_audit_verify(_: str = Depends(require_admin)):
+    return _engine().audit_status(full=True)
+
+
 @app.get("/api/lab/creatives")
 def lab_creatives(_: str = Depends(require_admin)):
     return _engine().creative_stats()

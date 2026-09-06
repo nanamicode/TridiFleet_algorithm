@@ -372,9 +372,9 @@ class SimulationEngine:
             )
             return ad
 
-    def audit_status(self) -> dict:
+    def audit_status(self, full: bool = False) -> dict:
         with self.lock:
-            return self.audit.status()
+            return self.audit.full_verify_status() if full else self.audit.status()
 
     def creative_stats(self) -> list[dict]:
         with self.lock:

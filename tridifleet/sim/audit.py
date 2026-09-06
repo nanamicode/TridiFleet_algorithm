@@ -4,6 +4,7 @@ import hashlib
 import json
 import sqlite3
 import threading
+import time
 import uuid
 from dataclasses import asdict, is_dataclass
 from pathlib import Path
@@ -49,6 +50,11 @@ class AuditLog:
         self.conn.commit()
         self.run_id: str | None = None
         self.last_hash = "GENESIS"
+        self.event_count = 0
+        self.pending = 0
+        self.flush_every = 100
+        self.last_flush = time.monotonic()
+        self.chain_valid = True
 
     def start_run(self, started_at: str, config: Any) -> str:
         with self.lock:
@@ -62,6 +68,9 @@ class AuditLog:
             self.conn.commit()
             self.run_id = run_id
             self.last_hash = "GENESIS"
+            self.event_count = 0
+            self.pending = 0
+            self.chain_valid = True
             self.append("run_start", started_at, {"config": payload})
             return run_id
 
@@ -107,14 +116,23 @@ class AuditLog:
                     event_hash,
                 ),
             )
-            self.conn.commit()
             self.last_hash = event_hash
+            self.event_count += 1
+            self.pending += 1
+            now = time.monotonic()
+            if self.pending >= self.flush_every or now - self.last_flush >= 2.0:
+                self.conn.commit()
+                self.pending = 0
+                self.last_flush = now
             return event_hash
 
     def verify(self) -> tuple[bool, int, str]:
         with self.lock:
             if not self.run_id:
                 return True, 0, "GENESIS"
+            self.conn.commit()
+            self.pending = 0
+            self.last_flush = time.monotonic()
             rows = self.conn.execute(
                 """
                 SELECT sim_time, kind, payload_json, prev_hash, event_hash
@@ -125,6 +143,8 @@ class AuditLog:
             prev = "GENESIS"
             for sim_time, kind, payload_json, stored_prev, stored_hash in rows:
                 if stored_prev != prev:
+                    self.chain_valid = False
+                    self.chain_valid = False
                     return False, len(rows), prev
                 material = (
                     f"{self.run_id}|{sim_time}|{kind}|{prev}|{payload_json}"
@@ -133,9 +153,20 @@ class AuditLog:
                 if expected != stored_hash:
                     return False, len(rows), prev
                 prev = stored_hash
+            self.chain_valid = True
             return True, len(rows), prev
 
     def status(self) -> dict:
+        # Fast path for the live dashboard. Full O(N) verification is explicit.
+        return {
+            "run_id": self.run_id,
+            "path": self.path,
+            "events": self.event_count,
+            "chain_valid": self.chain_valid,
+            "chain_tip": self.last_hash,
+        }
+
+    def full_verify_status(self) -> dict:
         ok, events, tip = self.verify()
         return {
             "run_id": self.run_id,
