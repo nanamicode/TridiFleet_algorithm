@@ -65,13 +65,12 @@ def test_counterfactual_evaluation_is_delayed_until_slot_completion():
 def test_exhausted_budgets_create_no_fill_without_overspend():
     engine = SimulationEngine(SimConfig(n_totems=2, radius_km=0.7, seed=31))
     for ad in engine.store.ads.values():
-        ad.daily_budget = 0.001
+        engine.spend_today[ad.ad_id] = ad.daily_budget
 
     engine.step(1.0)
-    engine.step(engine.config.decision_interval_sim_seconds + 1.0)
-    engine.step(engine.config.decision_interval_sim_seconds + 1.0)
 
-    assert engine.no_fill_slots > 0
+    assert engine.no_fill_slots == engine.config.n_totems
+    assert all(t.current_ad_id is None for t in engine.city.totems)
     assert all(
         engine.spend_today.get(ad.ad_id, 0.0) <= ad.daily_budget + 1e-9
         for ad in engine.store.ads.values()
