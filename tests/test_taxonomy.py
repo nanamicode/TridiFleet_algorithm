@@ -39,3 +39,14 @@ def test_daily_budget_is_not_a_retention_feature():
     high = Ad(ad_id="b", name="B", tags=["food"], duration_seconds=10, daily_budget=10000)
     enc = FeatureEncoder()
     assert np.allclose(enc.encode(low, ctx), enc.encode(high, ctx))
+
+
+def test_ground_truth_accepts_canonical_tags():
+    from tridifleet.sim.ground_truth import GroundTruthModel
+    ad = Ad(
+        ad_id="soap", name="Sabonete", category="higiene",
+        tags=["sabonete", "supermercado"], duration_seconds=10,
+    )
+    profile = GroundTruthModel(3).profile(ad)
+    assert "health" in profile.interest_weights
+    assert "home" in profile.interest_weights

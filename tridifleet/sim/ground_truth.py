@@ -11,23 +11,26 @@ from ..taxonomy import canonical_tag, canonical_tags
 from .domain import Person
 
 
-INTEREST_ALIASES = {
-    "food": "food", "padaria": "food", "bakery": "food", "supermarket": "food",
-    "coffee": "coffee", "cafe": "coffee",
-    "beauty": "beauty", "cosmeticos": "beauty", "cabeleireiro": "beauty",
-    "health": "health", "saude": "health", "farmacia": "health", "hygiene": "health",
-    "fitness": "fitness", "academia": "fitness",
-    "pets": "pets", "pet": "pets", "petshop": "pets",
-    "family": "family", "familia": "family", "children": "family",
-    "fashion": "fashion", "moda": "fashion",
-    "technology": "technology", "tecnologia": "technology",
-    "cars": "cars", "automotivo": "cars",
-    "home": "home", "casa": "home", "moveis": "home", "limpeza": "home",
-    "education": "education", "educacao": "education",
-    "finance": "finance", "financeiro": "finance",
-    "travel": "travel", "turismo": "travel",
-    "entertainment": "entertainment", "entretenimento": "entertainment",
-    "services": "services", "servicos": "services",
+TAG_INTERESTS = {
+    "food": ("food",),
+    "grocery": ("food", "home", "family"),
+    "coffee": ("coffee", "food"),
+    "personal_care": ("health", "home"),
+    "beauty": ("beauty", "fashion"),
+    "health": ("health",),
+    "fitness": ("fitness", "health"),
+    "pets": ("pets", "family"),
+    "family": ("family",),
+    "children": ("family", "education"),
+    "fashion": ("fashion",),
+    "technology": ("technology",),
+    "cars": ("cars",),
+    "home": ("home",),
+    "education": ("education",),
+    "finance": ("finance",),
+    "travel": ("travel",),
+    "entertainment": ("entertainment",),
+    "services": ("services",),
 }
 
 

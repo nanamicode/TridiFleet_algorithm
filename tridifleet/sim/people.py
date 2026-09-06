@@ -95,11 +95,21 @@ class PopulationEngine:
     def _route(self, start: tuple[float, float], end: tuple[float, float]) -> list[tuple[float, float]]:
         sx, sy = start
         ex, ey = end
-        if self.rng.random() < 0.5:
-            bend = (ex, sy)
-        else:
-            bend = (sx, ey)
-        return [start, bend, end]
+        first = (ex, sy)
+        second = (sx, ey)
+        radius2 = (self.city.radius_km * 0.97) ** 2
+
+        candidates = [first, second]
+        self.rng.shuffle(candidates)
+        for bend in candidates:
+            if bend[0] * bend[0] + bend[1] * bend[1] <= radius2:
+                return [start, bend, end]
+
+        # Both Manhattan corners would leave the circular city. Route through
+        # the guaranteed central arterial instead of cutting outside the map.
+        if abs(sx) + abs(ex) <= abs(sy) + abs(ey):
+            return [start, (0.0, sy), (0.0, ey), end]
+        return [start, (sx, 0.0), (ex, 0.0), end]
 
     def _spawn_person(self, timestamp: datetime) -> Person:
         hour = timestamp.hour + timestamp.minute / 60.0
