@@ -67,8 +67,13 @@ class SimulationEngine:
         self.current_day = self.sim_time.date()
 
         self.recent_observed = deque(maxlen=1200)
+        self.recent_policy_expected = deque(maxlen=1200)
         self.recent_random = deque(maxlen=1200)
         self.recent_oracle = deque(maxlen=1200)
+        self.recent_regret = deque(maxlen=1200)
+        self.recent_exploration = deque(maxlen=1200)
+        self.recent_ad_choices = deque(maxlen=1200)
+        self.cumulative_regret = 0.0
         self.metric_history: deque[MetricPoint] = deque(maxlen=360)
         self._last_metric_at = self.sim_time
         # Each active slot accumulates unique pedestrians across the whole
@@ -151,21 +156,43 @@ class SimulationEngine:
     def _mean(self, values: deque[float]) -> float:
         return sum(values) / len(values) if values else 0.0
 
+    def _creative_diversity(self) -> float:
+        if not self.recent_ad_choices:
+            return 0.0
+        counts: dict[str, int] = {}
+        for ad_id in self.recent_ad_choices:
+            counts[ad_id] = counts.get(ad_id, 0) + 1
+        total = len(self.recent_ad_choices)
+        entropy = 0.0
+        for count in counts.values():
+            p = count / total
+            entropy -= p * math.log(max(p, 1e-12))
+        denom = math.log(max(2, len(self.store.active_ads())))
+        return min(1.0, entropy / denom) if denom > 0 else 0.0
+
     def _record_metric_if_due(self) -> None:
         if (self.sim_time - self._last_metric_at).total_seconds() < 15 * 60:
             return
         observed = self._mean(self.recent_observed)
+        policy_expected = self._mean(self.recent_policy_expected)
         random_baseline = self._mean(self.recent_random)
         oracle = self._mean(self.recent_oracle)
-        uplift = ((observed / random_baseline) - 1.0) if random_baseline > 1e-9 else 0.0
+        uplift = ((policy_expected / random_baseline) - 1.0) if random_baseline > 1e-9 else 0.0
+        mean_regret = self._mean(self.recent_regret)
+        exploration_rate = self._mean(self.recent_exploration)
+        diversity = self._creative_diversity()
         diag = self.intelligence.diagnostics()
         self.metric_history.append(
             MetricPoint(
                 timestamp=self.sim_time,
                 observed_reward=observed,
+                policy_expected=policy_expected,
                 random_baseline=random_baseline,
                 oracle_ceiling=oracle,
                 uplift_vs_random=uplift,
+                mean_regret=mean_regret,
+                exploration_rate=exploration_rate,
+                creative_diversity=diversity,
                 model_uncertainty=float(diag["mean_parameter_uncertainty"]),
                 people=len(self.population.people),
                 decisions=self.total_decisions,
@@ -264,6 +291,16 @@ class SimulationEngine:
 
         decision = self.intelligence.choose(totem.totem_id, candidates=candidates)
         expected_by_ad = {ad.ad_id: value for ad, value in zip(candidates, expected)}
+        chosen_expected = expected_by_ad.get(decision.ad_id, 0.0)
+        regret = max(0.0, oracle_expected - chosen_expected)
+        global_n = self.store.posterior(decision.ad_id, "global").observations
+        exploring = 1.0 if global_n < 8.0 else 0.0
+        self.recent_policy_expected.append(chosen_expected)
+        self.recent_regret.append(regret)
+        self.recent_exploration.append(exploring)
+        self.recent_ad_choices.append(decision.ad_id)
+        self.cumulative_regret += regret
+
         self.audit.append(
             "decision",
             self.sim_time.isoformat(),
@@ -274,7 +311,9 @@ class SimulationEngine:
                 "evaluation_only": {
                     "random_expected": random_expected,
                     "oracle_expected": oracle_expected,
-                    "chosen_expected": expected_by_ad.get(decision.ad_id, 0.0),
+                    "chosen_expected": chosen_expected,
+                    "regret": regret,
+                    "exploration": bool(exploring),
                 },
             },
         )
@@ -386,14 +425,20 @@ class SimulationEngine:
     def metrics(self) -> dict:
         with self.lock:
             observed = self._mean(self.recent_observed)
+            policy_expected = self._mean(self.recent_policy_expected)
             random_baseline = self._mean(self.recent_random)
             oracle = self._mean(self.recent_oracle)
-            uplift = ((observed / random_baseline) - 1.0) if random_baseline > 1e-9 else 0.0
+            uplift = ((policy_expected / random_baseline) - 1.0) if random_baseline > 1e-9 else 0.0
             return {
                 "observed_reward": observed,
+                "policy_expected": policy_expected,
                 "random_baseline": random_baseline,
                 "oracle_ceiling": oracle,
                 "uplift_vs_random": uplift,
+                "mean_regret": self._mean(self.recent_regret),
+                "cumulative_regret": self.cumulative_regret,
+                "exploration_rate": self._mean(self.recent_exploration),
+                "creative_diversity": self._creative_diversity(),
                 "people": len(self.population.people),
                 "decisions": self.total_decisions,
                 "feedback_events": self.total_feedback,
@@ -407,9 +452,13 @@ class SimulationEngine:
                     {
                         "timestamp": p.timestamp.isoformat(),
                         "observed_reward": p.observed_reward,
+                        "policy_expected": p.policy_expected,
                         "random_baseline": p.random_baseline,
                         "oracle_ceiling": p.oracle_ceiling,
                         "uplift_vs_random": p.uplift_vs_random,
+                        "mean_regret": p.mean_regret,
+                        "exploration_rate": p.exploration_rate,
+                        "creative_diversity": p.creative_diversity,
                         "model_uncertainty": p.model_uncertainty,
                         "people": p.people,
                         "decisions": p.decisions,
@@ -449,8 +498,16 @@ class SimulationEngine:
                 ],
                 "metrics": {
                     "observed_reward": self._mean(self.recent_observed),
+                    "policy_expected": self._mean(self.recent_policy_expected),
                     "random_baseline": self._mean(self.recent_random),
                     "oracle_ceiling": self._mean(self.recent_oracle),
+                    "uplift_vs_random": (
+                        self._mean(self.recent_policy_expected) / self._mean(self.recent_random) - 1.0
+                        if self._mean(self.recent_random) > 1e-9 else 0.0
+                    ),
+                    "mean_regret": self._mean(self.recent_regret),
+                    "exploration_rate": self._mean(self.recent_exploration),
+                    "creative_diversity": self._creative_diversity(),
                     "decisions": self.total_decisions,
                     "feedback_events": self.total_feedback,
                     "uncertainty": self.intelligence.diagnostics()[

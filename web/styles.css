@@ -18,7 +18,7 @@ input:focus{border-color:var(--purple)}.form-grid{display:grid;grid-template-col
 .brand{display:flex;align-items:center;gap:11px;min-width:220px}.brand div:last-child{display:flex;flex-direction:column;font-size:13px}.brand span{font-size:11px;color:var(--muted);margin-top:2px}
 .clock-wrap{margin:auto;text-align:center;display:flex;flex-direction:column;gap:3px}.eyebrow{text-transform:uppercase;letter-spacing:.12em;color:#777d8d;font-size:10px;font-weight:800}
 .controls{display:flex;align-items:center;gap:9px}.compact{padding:10px 13px}.segmented{display:flex;background:#171820;border:1px solid #292b35;border-radius:10px;padding:3px}.segmented button{border:0;background:transparent;color:#8f94a1;padding:7px 9px;border-radius:7px}.segmented button.active{background:#30254a;color:white}
-.hud{display:grid;grid-template-columns:repeat(6,1fr);gap:1px;background:var(--line);border-bottom:1px solid var(--line)}
+.hud{display:grid;grid-template-columns:repeat(7,1fr);gap:1px;background:var(--line);border-bottom:1px solid var(--line)}
 .stat{background:#101116;padding:15px 18px;display:flex;flex-direction:column;gap:6px}.stat span{color:#7f8491;font-size:11px}.stat strong{font-size:20px;letter-spacing:-.03em}.stat.emphasis strong{color:var(--good)}
 .workspace{min-height:0;display:grid;grid-template-columns:1fr 290px}.map-shell{position:relative;min-width:0;background:#090a0e}.map-shell canvas{width:100%;height:100%;display:block}
 .inspector{border-left:1px solid var(--line);background:var(--panel);padding:22px;overflow:auto}.inspector h2{margin:8px 0 3px}.muted{color:var(--muted);font-size:12px}
@@ -45,3 +45,7 @@ input:focus{border-color:var(--purple)}.form-grid{display:grid;grid-template-col
 .integrity-head span{font-size:10px;padding:5px 8px;border-radius:999px;background:#1f332b;color:#6ce3b2}
 .integrity-head span.bad{background:#3b2025;color:#ff8791}
 .integrity-box small{color:#6f7480}
+
+.metric-cards.six{grid-template-columns:repeat(3,1fr)}
+.secondary-metrics{display:flex;gap:18px;flex-wrap:wrap;margin-bottom:12px;color:#8c919e;font-size:10px}
+.secondary-metrics strong{color:#e9e9ef;margin-left:4px}

@@ -107,9 +107,13 @@ class SimConfig:
 class MetricPoint:
     timestamp: datetime
     observed_reward: float
+    policy_expected: float
     random_baseline: float
     oracle_ceiling: float
     uplift_vs_random: float
+    mean_regret: float
+    exploration_rate: float
+    creative_diversity: float
     model_uncertainty: float
     people: int
     decisions: int

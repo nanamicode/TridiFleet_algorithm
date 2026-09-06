@@ -35,3 +35,15 @@ def test_new_creative_enters_inventory_immediately():
     engine.add_creative(ad)
     ids = {row["ad_id"] for row in engine.creative_stats()}
     assert "SOAP-NEW" in ids
+
+
+def test_policy_evaluation_metrics_are_well_ordered():
+    engine = SimulationEngine(SimConfig(n_totems=18, radius_km=1.3, seed=12))
+    for _ in range(30):
+        engine.step(30.0)
+    m = engine.metrics()
+    assert m["mean_regret"] >= 0.0
+    assert m["oracle_ceiling"] + 1e-9 >= m["policy_expected"]
+    assert m["oracle_ceiling"] + 1e-9 >= m["random_baseline"]
+    assert 0.0 <= m["exploration_rate"] <= 1.0
+    assert 0.0 <= m["creative_diversity"] <= 1.0

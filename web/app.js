@@ -101,11 +101,12 @@ function updateUI(){
   $("#peopleCount").textContent=s.people_count.toLocaleString("pt-BR");
   $("#decisionCount").textContent=s.metrics.decisions.toLocaleString("pt-BR");
   $("#aiReward").textContent=pct(s.metrics.observed_reward);
+  $("#policyReward").textContent=pct(s.metrics.policy_expected);
   $("#randomReward").textContent=pct(s.metrics.random_baseline);
-  const up=s.metrics.random_baseline>0?s.metrics.observed_reward/s.metrics.random_baseline-1:0;
+  const up=s.metrics.uplift_vs_random||0;
   $("#uplift").textContent=(up>=0?"+":"")+pct(up);
   $("#uplift").style.color=up>=0?"#37d39b":"#ff7c88";
-  $("#uncertainty").textContent=Number(s.metrics.uncertainty||0).toFixed(4);
+  $("#regret").textContent=pct(s.metrics.mean_regret);
   $("#pauseBtn").textContent=s.paused?"Continuar":"Pausar";
   if(state.selected) updateTotem(state.selected);
 }
@@ -182,14 +183,19 @@ async function loadMetrics(){
   state.metrics=await api("/api/lab/metrics");
   const audit=await api("/api/lab/audit/status");
   $("#metricAi").textContent=pct(state.metrics.observed_reward);
+  $("#metricPolicy").textContent=pct(state.metrics.policy_expected);
   $("#metricRandom").textContent=pct(state.metrics.random_baseline);
   $("#metricOracle").textContent=pct(state.metrics.oracle_ceiling);
+  $("#metricRegret").textContent=pct(state.metrics.mean_regret);
+  $("#metricExplore").textContent=pct(state.metrics.exploration_rate);
   $("#metricUplift").textContent=(state.metrics.uplift_vs_random>=0?"+":"")+pct(state.metrics.uplift_vs_random);
+  $("#metricDiversity").textContent=pct(state.metrics.creative_diversity);
+  $("#metricUncertainty").textContent=Number(state.metrics.intelligence?.mean_parameter_uncertainty||0).toFixed(4);
   $("#auditBadge").textContent=audit.chain_valid?"cadeia íntegra":"cadeia inválida";
   $("#auditBadge").classList.toggle("bad",!audit.chain_valid);
   $("#auditMeta").textContent=audit.events.toLocaleString("pt-BR")+" eventos auditados · run "+String(audit.run_id||"").slice(0,8);
   chart($("#rewardChart"),state.metrics.history,[
-    ["observed_reward","#9f7aea"],["random_baseline","#77808f"],["oracle_ceiling","#37d39b"]
+    ["policy_expected","#9f7aea"],["random_baseline","#77808f"],["oracle_ceiling","#37d39b"]
   ],0,1);
   chart($("#uncertaintyChart"),state.metrics.history,[["model_uncertainty","#f4bf50"]],null,null);
 }
