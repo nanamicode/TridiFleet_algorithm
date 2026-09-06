@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from datetime import datetime
+import math
 from typing import Literal
 
 
@@ -101,6 +102,10 @@ class SimConfig:
             raise ValueError("n_totems must be between 1 and 500")
         if not 0.5 <= self.radius_km <= 25:
             raise ValueError("radius_km must be between 0.5 and 25")
+        if not all(math.isfinite(v) and v > 0 for v in (
+            self.base_sim_seconds_per_real_second, self.decision_interval_sim_seconds,
+            self.detection_radius_km)):
+            raise ValueError("clock, decision interval and sensor radius must be finite and positive")
         return self
 
 

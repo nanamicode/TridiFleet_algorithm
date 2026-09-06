@@ -199,30 +199,13 @@ class GroundTruthModel:
         detection_radius_km: float,
         exposure_seconds: dict[int, float] | None = None,
     ) -> float:
-        if not audience:
-            return 0.0
-        gaze_sum = 0.0
-        dwell_weighted = 0.0
-        completion_weighted = 0.0
-        for person, distance in audience:
-            gaze, retention, completion = self.person_expectation(
-                person, distance, detection_radius_km, ad, timestamp, len(audience)
-            )
-            if exposure_seconds is not None:
-                retention = min(retention, exposure_seconds.get(person.person_id, 0) / ad.duration_seconds)
-            gaze_sum += gaze
-            dwell_weighted += gaze * retention
-            completion_weighted += gaze * completion
-        capture = gaze_sum / len(audience)
-        if gaze_sum <= 1e-9:
-            return 0.0
-        dwell = dwell_weighted / gaze_sum
-        # Counterfactual evaluator uses the same objective definition as the
-        # learner, but only inside hidden simulator physics.
-        return float(
-            (max(capture, 1e-6) ** 0.40)
-            * (max(dwell, 1e-6) ** 0.60)
-        )
+        # Compatibility API; use the same nonlinear Monte Carlo estimator as the lab.
+        from .evaluation import outcomes
+        caps = exposure_seconds if exposure_seconds is not None else {
+            p.person_id: ad.duration_seconds for p, _ in audience
+        }
+        return float(outcomes(self, audience, [ad], timestamp, detection_radius_km,
+            caps, key=f"compat|{timestamp.isoformat()}").expected[0])
 
     def simulate_feedback(
         self,

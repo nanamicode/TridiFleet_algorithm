@@ -105,9 +105,10 @@ function updateUI(){
   $("#peopleCount").textContent=s.people_count.toLocaleString("pt-BR");
   $("#decisionCount").textContent=s.metrics.decisions.toLocaleString("pt-BR");
   $("#aiReward").textContent=pct(s.metrics.observed_reward);
-  $("#policyReward").textContent=pct(s.metrics.policy_expected);
-  $("#randomReward").textContent=pct(s.metrics.random_baseline);
-  const up=s.metrics.uplift_vs_random||0;
+  const paired=s.metrics.paired_evidence;
+  $("#policyReward").textContent=paired?pct(paired.observed_policy):"—";
+  $("#randomReward").textContent=paired?pct(paired.paired_random):"—";
+  const up=paired?.paired_random>0?paired.observed_policy/paired.paired_random-1:0;
   $("#uplift").textContent=(up>=0?"+":"")+pct(up);
   $("#uplift").style.color=up>=0?"#37d39b":"#ff7c88";
   $("#regret").textContent=pct(s.metrics.mean_regret);
@@ -195,7 +196,16 @@ async function loadMetrics(){
   $("#metricOracle").textContent=pct(state.metrics.oracle_ceiling);
   $("#metricRegret").textContent=pct(state.metrics.mean_regret);
   $("#metricExplore").textContent=pct(state.metrics.exploration_rate);
-  $("#metricUplift").textContent=(state.metrics.uplift_vs_random>=0?"+":"")+pct(state.metrics.uplift_vs_random);
+  const paired=state.metrics.paired_evidence;
+  const gain=paired?.paired_random>0?paired.observed_policy/paired.paired_random-1:0;
+  $("#metricUplift").textContent=(gain>=0?"+":"")+pct(gain);
+  if($("#pairedDetails")){
+    const interval=paired?.descriptive_interval_95;
+    $("#pairedDetails").textContent=paired?
+      paired.slots+" janelas com público · "+paired.block_count+" blocos totem/hora. IA: "+pct(paired.observed_policy)+"; aleatório pareado: "+pct(paired.paired_random)+". "+
+      (interval?"Intervalo descritivo da diferença por bloco: "+(interval[0]*100).toFixed(2)+" a "+(interval[1]*100).toFixed(2)+" pontos percentuais. Não é teste de significância sequencial.":"Aguardando pelo menos 20 blocos para intervalo descritivo."):
+      "Reinicie com o servidor atualizado para habilitar a avaliação pareada.";
+  }
   $("#metricDiversity").textContent=pct(state.metrics.creative_diversity);
   $("#metricUncertainty").textContent=Number(state.metrics.intelligence?.mean_parameter_uncertainty||0).toFixed(4);
   $("#auditBadge").textContent=audit.chain_valid?"registro ativo; verificação manual disponível":"cadeia inválida";

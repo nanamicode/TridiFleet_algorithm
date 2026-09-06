@@ -1,11 +1,13 @@
 from __future__ import annotations
 
 import math
+import copy
 import os
 import random
 import threading
 import time
 from collections import deque
+from dataclasses import asdict
 from datetime import datetime, timedelta, timezone
 
 from ..config import settings
@@ -13,6 +15,7 @@ from ..intelligence import HybridRetentionIntelligence
 from ..models import Ad
 from ..reward import retention_reward
 from ..store import MemoryStore
+from .evaluation import outcomes, PairedEvidence, VERSION
 from .audit import AuditLog
 from .catalog import default_creatives
 from .city import CityMap
@@ -40,6 +43,7 @@ class SimulationEngine:
         self.city = CityMap.generate(config.radius_km, config.n_totems, config.seed)
         self.population = PopulationEngine(self.city, config.seed)
         self.truth = GroundTruthModel(config.seed)
+        self.evidence = PairedEvidence()
         self.sensor = SimulatedTotemSensor(config.seed)
 
         self.store = MemoryStore()
@@ -55,6 +59,7 @@ class SimulationEngine:
         self._step_remainder = 0.0
         self.exposure_seconds = {t.totem_id: {} for t in self.city.totems}
         self.exposure_streak = {t.totem_id: {} for t in self.city.totems}
+        self._last_checkpoint_wall = time.monotonic()
         self.last_error = None
         self.running = False
         self.paused = False
@@ -109,13 +114,23 @@ class SimulationEngine:
             )
             self._thread.start()
 
+    def checkpoint_path(self):
+        if self.audit.path == ":memory:": return None
+        return os.getenv("TRIDIFLEET_CHECKPOINT", "data/lab-checkpoint.json.gz")
+
+    def save_checkpoint(self):
+        path = self.checkpoint_path()
+        if path:
+            from .checkpoint import save
+            save(self, path)
+
     def stop(self) -> None:
         self._stop_event.set()
-        with self.lock:
-            self.running = False
         thread = self._thread
         if thread and thread.is_alive() and thread is not threading.current_thread():
             thread.join()
+        self.save_checkpoint()
+        self.running = False
         try:
             self.audit.append("run_stop", self.sim_time.isoformat(), {"reason": "stopped"})
         except Exception:
@@ -152,6 +167,9 @@ class SimulationEngine:
                 sim_dt = wall_dt * self.config.base_sim_seconds_per_real_second * speed
                 try:
                     self.step(sim_dt)
+                    if time.monotonic() - self._last_checkpoint_wall >= 30:
+                        self.save_checkpoint()
+                        self._last_checkpoint_wall = time.monotonic()
                 except Exception as exc:
                     import logging
                     logging.exception("Simulation stopped after processing error")
@@ -245,16 +263,15 @@ class SimulationEngine:
         elapsed = self.sim_time - decision_time
         midpoint = decision_time + elapsed / 2
 
-        expected = [
-            self.truth.expected_reward(
-                audience,
-                ad,
-                midpoint,
-                self.config.detection_radius_km,
-                exposure_seconds=self.exposure_seconds[totem.totem_id],
-            )
-            for ad in candidate_ads
-        ]
+        batch = outcomes(self.truth, audience, candidate_ads, midpoint,
+            self.config.detection_radius_km, self.exposure_seconds[totem.totem_id],
+            key=f"{totem.totem_id}|{decision_time.isoformat()}")
+        expected = batch.expected.tolist()
+        chosen_index = next(i for i, ad in enumerate(candidate_ads) if ad.ad_id == pending["chosen_ad_id"])
+        paired_random = float(batch.realized.mean())
+        chosen_observed = float(batch.realized[chosen_index])
+        self.evidence.add(midpoint, totem.totem_id, chosen_observed, paired_random, len(audience))
+        completed_feedback = batch.feedback(chosen_index, pending["decision_id"], candidate_ads[chosen_index], len(audience))
         expected_by_ad = {
             ad.ad_id: value for ad, value in zip(candidate_ads, expected)
         }
@@ -274,6 +291,11 @@ class SimulationEngine:
             self.cumulative_regret += regret
 
         return {
+            "feedback": completed_feedback,
+            "evaluation_version": VERSION,
+            "paired_random_observed": paired_random,
+            "chosen_observed": chosen_observed,
+            "monte_carlo_draws": 64,
             "random_expected": random_expected,
             "oracle_expected": oracle_expected,
             "chosen_expected": chosen_expected,
@@ -297,15 +319,11 @@ class SimulationEngine:
                 evaluation = self._evaluate_completed_slot(totem, completed)
                 slot_start = totem.last_decision_at or self.sim_time
                 slot_midpoint = slot_start + (self.sim_time - slot_start) / 2
-                previous_feedback = self.truth.simulate_feedback(
-                    decision_id=totem.current_decision_id,
-                    audience=completed,
-                    ad=ad,
-                    timestamp=slot_midpoint,
-                    detection_radius_km=self.config.detection_radius_km,
-                    rng=self.rng,
-                    exposure_seconds=self.exposure_seconds[totem.totem_id],
-                )
+                previous_feedback = evaluation.pop("feedback")
+                for person, _ in completed:
+                    live = self.population.people.get(person.person_id)
+                    if live:
+                        live.ad_exposures[ad.ad_id] = live.ad_exposures.get(ad.ad_id, 0) + 1
                 outcome = self.intelligence.apply_feedback(previous_feedback)
                 reward = float(outcome["reward"])
                 self.audit.append(
@@ -435,7 +453,12 @@ class SimulationEngine:
                         durations[person.person_id] = max(durations.get(person.person_id, 0.0), streak[person.person_id])
                         prev = bucket.get(person.person_id)
                         if prev is None or distance < prev[1]:
-                            bucket[person.person_id] = (person, distance)
+                            if prev is None:
+                                frozen = copy.copy(person)
+                                frozen.ad_exposures = dict(person.ad_exposures)
+                                bucket[person.person_id] = (frozen, distance)
+                            else:
+                                bucket[person.person_id] = (prev[0], distance)
 
                 due = (
                     totem.last_decision_at is None
@@ -517,6 +540,9 @@ class SimulationEngine:
             oracle = self._mean(self.recent_oracle)
             uplift = ((policy_expected / random_baseline) - 1.0) if random_baseline > 1e-9 else 0.0
             return {
+                "config": asdict(self.config),
+                "evaluation_version": VERSION,
+                "paired_evidence": self.evidence.summary(),
                 "observed_reward": observed,
                 "policy_expected": policy_expected,
                 "random_baseline": random_baseline,
@@ -586,6 +612,7 @@ class SimulationEngine:
                     for t in self.city.totems
                 ],
                 "metrics": {
+                    "paired_evidence": self.evidence.summary(),
                     "observed_reward": self._mean(self.recent_observed),
                     "policy_expected": self._mean(self.recent_policy_expected),
                     "random_baseline": self._mean(self.recent_random),

@@ -1,3 +1,6 @@
+> Documento histórico da base v2. Para o avaliador, painel e persistência atuais,
+> consulte [Revisão v3](REVISAO_V3.md), que substitui as descrições antigas desses componentes.
+
 # Architecture — TridiFleet Retention Engine
 
 ## Objective

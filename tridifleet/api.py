@@ -34,6 +34,16 @@ simulation = SimulationManager()
 
 @asynccontextmanager
 async def lifespan(app):
+    checkpoint = Path(os.getenv("TRIDIFLEET_CHECKPOINT", "data/lab-checkpoint.json.gz"))
+    if checkpoint.exists() and os.getenv("TRIDIFLEET_AUDIT_DB") != ":memory:":
+        from .sim.checkpoint import restore
+        engine = restore(checkpoint)
+        simulation.engine = engine
+        if engine.running:
+            with engine.lock:
+                paused = engine.paused
+                engine.start_background()
+                engine.paused = paused
     yield
     engine = simulation.get()
     if engine:

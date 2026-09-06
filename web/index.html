@@ -60,10 +60,10 @@
     <section class="hud">
       <div class="stat"><span>Pessoas ativas</span><strong id="peopleCount">0</strong></div>
       <div class="stat"><span>Decisões</span><strong id="decisionCount">0</strong></div>
-      <div class="stat"><span>Retenção observada</span><strong id="aiReward">0%</strong></div>
-      <div class="stat"><span>Política esperada</span><strong id="policyReward">0%</strong></div>
-      <div class="stat"><span>Baseline aleatório</span><strong id="randomReward">0%</strong></div>
-      <div class="stat emphasis"><span>Uplift da política</span><strong id="uplift">0%</strong></div>
+      <div class="stat"><span>Escore observado · recente</span><strong id="aiReward">0%</strong></div>
+      <div class="stat"><span>IA · acumulado</span><strong id="policyReward">0%</strong></div>
+      <div class="stat"><span>Aleatório pareado · acumulado</span><strong id="randomReward">0%</strong></div>
+      <div class="stat emphasis"><span>Ganho pareado · simulação</span><strong id="uplift">0%</strong></div>
       <div class="stat"><span>Regret médio</span><strong id="regret">—</strong></div>
     </section>
 
@@ -119,9 +119,9 @@
     </div>
     <div class="metric-cards six">
       <div><span>IA observada</span><strong id="metricAi">—</strong></div>
-      <div><span>Política esperada</span><strong id="metricPolicy">—</strong></div>
-      <div><span>Random</span><strong id="metricRandom">—</strong></div>
-      <div><span>Oracle oculto</span><strong id="metricOracle">—</strong></div>
+      <div><span>IA · acumulado</span><strong id="metricPolicy">—</strong></div>
+      <div><span>Aleatório · estimativa amostrada</span><strong id="metricRandom">—</strong></div>
+      <div><span>Teto estimado · amostrado</span><strong id="metricOracle">—</strong></div>
       <div><span>Regret médio</span><strong id="metricRegret">—</strong></div>
       <div><span>Criativos com pouca evidência</span><strong id="metricExplore">—</strong></div>
     </div>
@@ -134,10 +134,11 @@
       <canvas id="uncertaintyChart" height="180"></canvas>
     </div>
     <div class="integrity-box">
+      <strong>Comparação com resultados equivalentes</strong><p id="pairedDetails">Aguardando dados.</p>
       <div class="secondary-metrics"><span>Uplift <strong id="metricUplift">—</strong></span><span>Diversidade <strong id="metricDiversity">—</strong></span><span>Incerteza <strong id="metricUncertainty">—</strong></span></div>
       <div class="integrity-head"><strong>Integridade experimental</strong><span id="auditBadge">verificando…</span></div>
       <p>O modelo de resposta real fica isolado em <code>sim/ground_truth.py</code>. O motor de inteligência recebe somente contexto, decisão e feedback agregado. Baseline e oracle são calculados apenas pelo avaliador da simulação e nunca retornam como feature de treinamento.</p>
-      <p>O ganho exibido compara escores do mundo sintético na mesma audiência. Não é uma medição de ganho em pessoas reais. A física usa passos de 1 segundo; o relógio nominal representa 120 segundos simulados por segundo de execução, sujeito à capacidade do computador.</p>
+      <p>O ganho compara resultados amostrados na mesma audiência e histórico, incluindo janelas sem olhares. O gráfico estima a recompensa por Monte Carlo. O teto tem erro de estimação. Não é um teste A/B de campanhas independentes nem medição em pessoas reais. A física usa passos de 1 segundo; o relógio nominal representa 120 segundos simulados por segundo de execução, sujeito à capacidade do computador.</p>
       <button id="verifyAuditBtn">Verificar histórico completo</button> <button id="exportMetricsBtn">Exportar métricas JSON</button>
       <small id="auditMeta"></small>
     </div>

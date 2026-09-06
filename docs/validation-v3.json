@@ -1,0 +1,69 @@
+{
+  "hours_per_seed": 3,
+  "detection_radius_m": 6,
+  "results": [
+    {
+      "decisions": 1800,
+      "feedback_events": 1790,
+      "observed_reward": 0.297320681773597,
+      "policy_expected": 0.2978539226740056,
+      "random_baseline": 0.2654202578953503,
+      "oracle_ceiling": 0.4990264071535656,
+      "uplift_vs_random": 0.12219739757559589,
+      "mean_regret": 0.2011724844795599,
+      "seed": 42,
+      "elapsed_seconds": 9.967
+    },
+    {
+      "decisions": 1800,
+      "feedback_events": 1790,
+      "observed_reward": 0.3416375921285326,
+      "policy_expected": 0.346020293402908,
+      "random_baseline": 0.27460287957038465,
+      "oracle_ceiling": 0.47829083534027755,
+      "uplift_vs_random": 0.26007525465230263,
+      "mean_regret": 0.13227054193736953,
+      "seed": 76,
+      "elapsed_seconds": 10.348
+    },
+    {
+      "decisions": 1800,
+      "feedback_events": 1790,
+      "observed_reward": 0.34089657461000183,
+      "policy_expected": 0.33984603720047496,
+      "random_baseline": 0.2566523147616523,
+      "oracle_ceiling": 0.4998163197921145,
+      "uplift_vs_random": 0.32414951143566717,
+      "mean_regret": 0.15997028259163953,
+      "seed": 31415,
+      "elapsed_seconds": 9.81
+    },
+    {
+      "decisions": 1800,
+      "feedback_events": 1790,
+      "observed_reward": 0.34059572000495825,
+      "policy_expected": 0.33517134736493315,
+      "random_baseline": 0.279962940653404,
+      "oracle_ceiling": 0.4778020276688225,
+      "uplift_vs_random": 0.19719898134616876,
+      "mean_regret": 0.1426306803038894,
+      "seed": 2026,
+      "elapsed_seconds": 10.749
+    },
+    {
+      "decisions": 1800,
+      "feedback_events": 1790,
+      "observed_reward": 0.27853419037519045,
+      "policy_expected": 0.2816499649514557,
+      "random_baseline": 0.22516883772013022,
+      "oracle_ceiling": 0.4421271379431346,
+      "uplift_vs_random": 0.2508390050914939,
+      "mean_regret": 0.16047717299167882,
+      "seed": 90210,
+      "elapsed_seconds": 8.584
+    }
+  ],
+  "mean_uplift": 0.23089203002024566,
+  "min_uplift": 0.12219739757559589,
+  "interpretation": "v3: Monte Carlo of actual nonlinear rewards on matched audiences, including zero impressions; not independent campaign A/B."
+}

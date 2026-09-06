@@ -6,6 +6,16 @@ A pergunta central é:
 
 > **Qual criativo deve tocar neste totem, neste momento, para maximizar a atenção visual esperada?**
 
+## Revisão v3
+
+Avaliação corrigida por resultados amostrados equivalentes, comparação pareada no
+painel, controles contra ganhos artificiais e retomada automática do laboratório.
+Veja [mudanças e validação](docs/REVISAO_V3.md) e [cinco seeds](docs/validation-v3.json).
+
+Para atualizar da v2: encerre o servidor, substitua o código mantendo `data` e `.env`,
+e execute o iniciador novamente. A execução antiga em RAM não pode ser recuperada;
+a partir da v3, o laboratório salva e restaura automaticamente cidade e aprendizado.
+
 ## Estado atual
 
 O repositório já contém duas partes integradas:
@@ -66,8 +76,8 @@ Baixe este repositório em **Code → Download ZIP** e extraia tudo.
   `docker compose up -d --build` mantém o servidor em segundo plano.
 
 Leia [validação e limites](docs/VALIDACAO_E_LIMITES.md) e o
-[relatório de cinco seeds](docs/validation.json). Reiniciar o processo preserva
-os logs, mas não restaura automaticamente a cidade ou o aprendiz.
+[relatório de cinco seeds v3](docs/validation-v3.json). Reiniciar o processo restaura
+o último checkpoint v3 da cidade e do aprendiz.
 
 ## Rodar
 
