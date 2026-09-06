@@ -61,6 +61,12 @@ def main() -> None:
     assert m["oracle_ceiling"] + 1e-9 >= m["policy_expected"]
     assert m["oracle_ceiling"] + 1e-9 >= m["random_baseline"]
     assert m["mean_regret"] >= 0.0
+    # Deterministic guardrail: a material regression in actual learning should
+    # break CI instead of being hidden behind API/unit-test correctness.
+    assert m["uplift_vs_random"] >= 0.08, (
+        "retention policy lost its learning advantage over random rotation: "
+        f"{m['uplift_vs_random']:.3%}"
+    )
 
 
 if __name__ == "__main__":

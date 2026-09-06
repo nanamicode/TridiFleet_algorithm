@@ -171,3 +171,21 @@ Docker binds the UI to `127.0.0.1:8000` by default. Change both environment vari
 
 - `TRIDIFLEET_ADMIN_USER`
 - `TRIDIFLEET_ADMIN_PASSWORD`
+
+
+## Reward contract
+
+The optimizer currently uses **visual_attention_v2**:
+
+    capture = impressions / reach
+    dwell = average_view_seconds / creative_duration
+    reward = capture^0.40 * dwell^0.60
+
+Completion rate is still measured and displayed, but it is intentionally not an
+optimization term. In a physical low-volume slot, completion can be based on one
+or two people and creates excessive reward variance. Continuous dwell carries
+more stable information and is the primary retention signal.
+
+The CI runs a deterministic full-city benchmark and requires the learned policy
+to beat random rotation by at least 8% expected reward after the quick training
+window. This is a regression floor, not a claimed production performance number.

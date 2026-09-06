@@ -214,11 +214,11 @@ class GroundTruthModel:
         if gaze_sum <= 1e-9:
             return 0.0
         dwell = dwell_weighted / gaze_sum
-        completion = completion_weighted / gaze_sum
+        # Counterfactual evaluator uses the same objective definition as the
+        # learner, but only inside hidden simulator physics.
         return float(
-            (max(capture, 1e-6) ** 0.35)
-            * (max(dwell, 1e-6) ** 0.50)
-            * (max(completion, 1e-6) ** 0.15)
+            (max(capture, 1e-6) ** 0.40)
+            * (max(dwell, 1e-6) ** 0.60)
         )
 
     def simulate_feedback(

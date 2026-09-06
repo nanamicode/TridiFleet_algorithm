@@ -6,27 +6,32 @@ from .config import settings
 from .models import Feedback
 
 
-def retention_reward(feedback: Feedback) -> float:
-    """Bounded attention reward built only from observed telemetry.
+REWARD_VERSION = "visual_attention_v2"
 
-    Capture (looking at all), depth (continuous viewing) and completion are kept
-    separate so an ad cannot look excellent merely because a tiny audience
-    watched for a long time.
+
+def retention_reward(feedback: Feedback) -> float:
+    """Bounded visual-attention reward built only from observed telemetry.
+
+    The primary product objective is:
+      1) capture a passerby's direct gaze;
+      2) sustain that gaze for a large fraction of the creative.
+
+    Completion remains an audited diagnostic but is not part of the optimizer:
+    on low-footfall physical media it is too sparse/noisy and would make a
+    one-person slot swing the posterior excessively.
     """
     if feedback.reach <= 0:
         return 0.0
 
     capture = min(1.0, feedback.impressions / feedback.reach)
     dwell = min(1.0, feedback.avg_view_seconds / feedback.ad_duration_seconds)
-    completion = feedback.completion_rate
-    if completion is None:
-        completion = max(0.0, min(1.0, (dwell - 0.55) / 0.45))
-
     if capture <= 0 or dwell <= 0:
         return 0.0
 
-    # Weighted geometric objective. Sustained attention is the primary goal.
-    reward = (capture ** 0.35) * (dwell ** 0.50) * (max(completion, 1e-6) ** 0.15)
+    reward = (
+        capture ** settings.impression_exponent
+        * dwell ** settings.dwell_exponent
+    )
     return float(max(0.0, min(1.0, reward)))
 
 
