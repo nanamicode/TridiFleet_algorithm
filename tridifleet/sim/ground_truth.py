@@ -154,6 +154,7 @@ class GroundTruthModel:
             + age_term * 0.75
             + time_term * 0.48
             - duration_penalty
+            - fatigue
         )
 
     def person_expectation(
